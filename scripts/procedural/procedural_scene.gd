@@ -1,5 +1,6 @@
 extends Node3D
 ## One isolated experiment. Stage all objects at t before displaying any of them.
+const ProceduralTheme = preload("res://scripts/procedural/procedural_theme.gd")
 const ObjectModel = preload("res://scripts/procedural/procedural_object.gd")
 const FaceRenderer = preload("res://scripts/procedural/face_renderer.gd")
 const Card = preload("res://scripts/procedural/object_card.gd")
@@ -38,13 +39,15 @@ func _ready() -> void:
 	add_child(light)
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	var ui_theme := ProceduralTheme.create()
 	panel = PanelContainer.new()
+	panel.theme = ui_theme
 	layer.add_child(panel)
 	panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	panel.offset_left = 16
-	panel.offset_right = 550
-	panel.offset_top = 16
-	panel.offset_bottom = 16
+	panel.offset_left = 32
+	panel.offset_right = 650
+	panel.offset_top = 20
+	panel.offset_bottom = 20
 	sidebar_scroll = ScrollContainer.new()
 	sidebar_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sidebar_scroll.follow_focus = true
@@ -60,7 +63,9 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 23)
 	box.add_child(title)
 	var help := Label.new()
-	help.text = "Expressions: t in seconds; rotations in degrees.\nTry XW = 30*t, position W = 2*sin(t).\nProjection is independent per shape. Apply to commit."
+	help.text = "Expressions: t in seconds; rotations in degrees.\nTry rotation XW = 30*t.\nProjection is independent per shape. Apply to commit."
+	help.add_theme_font_size_override("font_size", 14)
+	help.add_theme_color_override("font_color", Color("b7c6d9"))
 	box.add_child(help)
 	var toolbar := HBoxContainer.new()
 	box.add_child(toolbar)
@@ -87,18 +92,25 @@ func _ready() -> void:
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(list)
 	var bottom := PanelContainer.new()
+	bottom.theme = ui_theme
 	layer.add_child(bottom)
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom.offset_left = 16
 	bottom.offset_right = -16
-	bottom.offset_top = -134
+	bottom.offset_top = -166
 	bottom.offset_bottom = -12
 	bottom.add_child(timeline)
 	timeline.time_requested.connect(evaluate_time)
 	var collapse := Button.new()
 	collapse.text = "◀"
 	layer.add_child(collapse)
-	collapse.position = Vector2(0, 16)
+	collapse.theme = ui_theme
+	collapse.focus_mode = Control.FOCUS_NONE
+	collapse.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
+	collapse.offset_left = 0
+	collapse.offset_right = 28
+	collapse.offset_top = -45
+	collapse.offset_bottom = 45
 	collapse.pressed.connect(func(): panel.visible = not panel.visible; collapse.text = "◀" if panel.visible else "▶")
 
 func add_shape(index: int):
@@ -178,6 +190,6 @@ func refresh_shape_picker() -> void:
 ## Hug the visible content, scrolling only when it exceeds the available height.
 func fit_sidebar() -> void:
 	if not is_instance_valid(sidebar_box): return
-	var available := maxf(100.0, get_viewport().get_visible_rect().size.y - 166.0)
+	var available := maxf(100.0, get_viewport().get_visible_rect().size.y - 218.0)
 	sidebar_scroll.custom_minimum_size.y = minf(sidebar_box.get_combined_minimum_size().y, available)
 	panel.size.y = panel.get_combined_minimum_size().y

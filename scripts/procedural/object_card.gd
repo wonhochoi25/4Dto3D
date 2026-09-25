@@ -12,6 +12,7 @@ var message: Label
 var runtime_error := false
 
 func setup(model, mesh_renderer) -> void:
+	add_theme_stylebox_override("panel", preload("res://scripts/procedural/procedural_theme.gd").box("192333", 12, 8, "40516a"))
 	object = model
 	renderer = mesh_renderer
 	var box := VBoxContainer.new()
