@@ -31,6 +31,8 @@ func _ready() -> void:
 	content = Control.new()
 	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	layout.add_child(content)
+	content.resized.connect(sync_tab_resolution)
+	get_viewport().size_changed.connect(sync_tab_resolution)
 	add_page(Playground.instantiate(), "Playground", false)
 
 func new_procedural() -> void:
@@ -40,12 +42,15 @@ func new_procedural() -> void:
 func add_page(scene: Node, title: String, closable: bool) -> void:
 	var host := SubViewportContainer.new()
 	host.stretch = true
-	host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	host.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	content.add_child(host)
 	var viewport := SubViewport.new()
 	viewport.own_world_3d = true
 	viewport.handle_input_locally = true
+	viewport.msaa_3d = Viewport.MSAA_4X
+	viewport.size_2d_override_stretch = true
 	host.add_child(viewport)
+	configure_tab_resolution(host, viewport)
 	viewport.add_child(scene)
 	var header := HBoxContainer.new()
 	tabs.add_child(header)
@@ -91,3 +96,17 @@ func close_page(index: int) -> void:
 	page["host"].queue_free()
 	page["header"].queue_free()
 	activate(pages.find(previous) if pages.has(previous) else maxi(0, index - 1))
+
+## Render at actual output pixels, not the root canvas's lower logical resolution.
+## Counter-scale the container and override the child canvas so UI/input stay logical.
+func configure_tab_resolution(host: SubViewportContainer, viewport: SubViewport) -> void:
+	var logical := content.size.max(Vector2(2, 2))
+	var output_scale := get_viewport().get_final_transform().get_scale().abs()
+	var pixels := (logical * output_scale).round().max(Vector2(2, 2))
+	host.scale = logical / pixels
+	host.size = pixels
+	viewport.size_2d_override = Vector2i(logical.round())
+
+func sync_tab_resolution() -> void:
+	for page in pages:
+		configure_tab_resolution(page["host"], page["viewport"])

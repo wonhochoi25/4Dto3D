@@ -66,9 +66,8 @@ func setup(model, mesh_renderer) -> void:
 		var names := ["X", "Y", "Z", "W"]
 		if component == "angles": names = ["XY", "XZ", "XW", "YZ", "YW", "ZW"]
 		if component == "projection":
-			names = []
-			for output in ["X", "Y", "Z"]:
-				for input_axis in ["X", "Y", "Z", "W"]: names.append(output + " ← " + input_axis)
+			build_projection_matrix(section)
+			continue
 		for i in range(names.size()):
 			var row := HBoxContainer.new()
 			section.add_child(row)
@@ -120,3 +119,42 @@ func clear_errors() -> void:
 		fields[key].remove_theme_color_override("font_color")
 	message.text = ""
 	message.hide()
+
+## Row-major 3×4 matrix: columns are 4D inputs, rows are 3D outputs.
+## Keep expression keys unchanged so saved drafts and evaluation use the same mapping.
+func build_projection_matrix(section: VBoxContainer) -> void:
+	var hint := Label.new()
+	hint.text = "Columns: 4D input · Rows: 3D output"
+	section.add_child(hint)
+	var grid := GridContainer.new()
+	grid.columns = 5
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	section.add_child(grid)
+	for name in ["", "X", "Y", "Z", "W"]:
+		var heading := Label.new()
+		heading.text = name
+		heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		grid.add_child(heading)
+	for row in range(3):
+		var heading := Label.new()
+		heading.text = ["X", "Y", "Z"][row]
+		grid.add_child(heading)
+		for column in range(4):
+			var key := "projection.%d" % (row * 4 + column)
+			var cell := VBoxContainer.new()
+			cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			grid.add_child(cell)
+			var field := LineEdit.new()
+			field.text = object.sources[key]
+			field.custom_minimum_size.x = 90
+			field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			field.tooltip_text = "Output %s ← input %s · expression in t" % [["X", "Y", "Z"][row], ["X", "Y", "Z", "W"][column]]
+			cell.add_child(field)
+			fields[key] = field
+			var error_label := Label.new()
+			error_label.add_theme_color_override("font_color", Color("ff9a9a"))
+			error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			error_label.hide()
+			cell.add_child(error_label)
+			errors[key] = error_label
