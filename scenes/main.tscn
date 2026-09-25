@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://do8bcwto3hk4e"]
+
+[ext_resource type="Script" uid="uid://ctti3nbfl8kgs" path="res://scripts/main.gd" id="1"]
+[ext_resource type="Script" uid="uid://djwxy2ijrpd7n" path="res://scripts/fly_camera.gd" id="2"]
+
+[node name="ProjectionLab" type="Node3D" unique_id=50573940]
+script = ExtResource("1")
+
+[node name="ShapeRenderer" type="MeshInstance3D" parent="." unique_id=1972100432]
+
+[node name="Camera" type="Camera3D" parent="." unique_id=694378830]
+current = true
+near = 0.01
+far = 10000.0
+script = ExtResource("2")
