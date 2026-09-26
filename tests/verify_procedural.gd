@@ -77,7 +77,7 @@ func verify() -> void:
 	var old_frame = first.object.last_points.duplicate()
 	var second_frame = second.object.last_points.duplicate()
 	check(not scene.evaluate_time(4), "Reject runtime error")
-	check(first.object.last_points == old_frame and second.object.last_points == second_frame and scene.timeline.time == 2, "Atomic last valid frame")
+	check(first.object.last_points == old_frame and second.object.last_points == second_frame and scene.timeline.time == scene.timeline.start, "Atomic last valid frame")
 	first.fields["scale.0"].text = "1"
 	scene.apply_card(first)
 	scene.timeline.direction = 1
@@ -93,6 +93,7 @@ func verify() -> void:
 	scene.timeline.accept(5)
 	scene.timeline.direction = -1
 	scene.timeline._process(0.25)
+	while scene.pending_seek != null: scene.advance_seek()
 	check(is_equal_approx(scene.timeline.time, 4.75), "Reverse playback")
 	scene.timeline.scrub(1.25)
 	check(scene.timeline.direction == 0 and scene.timeline.time == 1.25, "Manual time pauses")
@@ -100,6 +101,7 @@ func verify() -> void:
 	scene.timeline.accept(0.1)
 	scene.timeline.direction = -1
 	scene.timeline._process(0.25)
+	while scene.pending_seek != null: scene.advance_seek()
 	check(is_equal_approx(scene.timeline.time, 9.85), "Reverse looping")
 	scene.timeline.looping = false
 	scene.timeline.accept(0.1)
@@ -110,6 +112,7 @@ func verify() -> void:
 	scene.timeline.end_field.get_line_edit().text = "5"
 	scene.timeline.set_range()
 	scene.timeline.scrub(-2)
+	while scene.pending_seek != null: scene.advance_seek()
 	check(scene.timeline.time == -2, "Negative time")
 	await process_frame
 	await process_frame

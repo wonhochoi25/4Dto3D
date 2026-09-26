@@ -300,3 +300,18 @@ new_offset = inverse(new_parent_world(t_edit))
 Expressions and their drafts remain intact. Later motion follows the new parent, so the trajectory at other times may change. Scrubbing remains deterministic because the offset is constant. This requires no inverse of the child's transform, so zero-scale children can be reparented. A singular destination parent is rejected because a world-preserving inverse is unavailable.
 
 Run `res://tests/verify_hierarchy.gd` headlessly for nested transforms, keep-world parenting/unparenting, cycle prevention, singular-parent handling, group removal, reverse-time determinism, implicit pairs, Geometry versus Group transform scope, editor/tab preservation, drag/drop, and viewport selection.
+
+
+## Fixed-step simulation timeline
+
+Procedural time now uses 1/60-second steps relative to Start. Slider and time-field requests snap to the nearest step within the range; an End value between steps stops at the last complete step. Speed changes playback rate, not simulation step size. Fractional playback time accumulates across render frames.
+
+Forward playback restores recorded states before extending the recording. Reverse restores earlier snapshots; it never integrates physics backward. Restart restores Start without deleting the recording. Loop wraps the playback cursor and restores the recorded state, rather than carrying the final state into the next loop. Unrecorded seeks simulate forward in bounded batches and display progress; the previously displayed frame stays visible until the target is ready. Invalid steps pause playback and preserve the displayed frame.
+
+Changing position, rotation, scale, anchor, adding/removing shapes, or parenting clears the recording and returns to Start. Projection-only edits, camera changes, and appearance do not invalidate physics state. Changing Start resets; changing End trims or extends the available range. Each experiment has independent in-memory history, discarded when closed. There is no recording before Start.
+
+`simulation_4d.gd` owns the stepping state. Its initial test-body API supports constant 4D linear velocity and six-plane angular velocity, with packed position, velocity, orientation, and angular-velocity snapshots. `simulation_recording.gd` owns history and restoration. `timeline.gd` owns playback controls, and `procedural_scene.gd` coordinates seeking and display.
+
+Current user-created shapes are still expression-driven: procedural transforms are recomputed at the selected time, while step validation checks expressions along unrecorded forward paths. Snapshots store dynamic state only, never vertex arrays or meshes. No dynamic-body UI, forces, gravity, or collision response has been introduced yet; the stepping API is the foundation for that next stage. Memory grows with recorded steps and dynamic-body count within the chosen range.
+
+Run `tests/verify_recording.gd` for constant-velocity integration, exact restoration, extending history after reverse playback, bounded seeks, trimming, edit invalidation, projection preservation, and fractional-step accumulation.

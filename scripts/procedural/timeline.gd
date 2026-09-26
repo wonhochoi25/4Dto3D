@@ -1,6 +1,10 @@
 extends VBoxContainer
 ## Playback requests times; the scene accepts only a fully valid evaluated frame.
 signal time_requested(value: float)
+signal range_changed(previous_start: float)
+const STEP := 1.0 / 60.0
+var remainder := 0.0
+var busy := false
 var time := 0.0
 var direction := 0
 var start := 0.0
@@ -40,7 +44,7 @@ func _ready() -> void:
 	slider = HSlider.new()
 	slider.min_value = start
 	slider.max_value = end
-	slider.step = 0.001
+	slider.step = STEP
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slider.value_changed.connect(scrub)
 	time_row.add_child(slider)
@@ -56,6 +60,7 @@ func _ready() -> void:
 
 func pause() -> void:
 	direction = 0
+	remainder = 0.0
 
 func scrub(value: float) -> void:
 	pause()
@@ -68,6 +73,7 @@ func set_range() -> void:
 		message.text = "Start must be finite and less than End."
 		return
 	pause()
+	var previous_start := start
 	start = start_field.value
 	end = end_field.value
 	slider.set_block_signals(true)
@@ -75,7 +81,7 @@ func set_range() -> void:
 	slider.min_value = start
 	slider.max_value = end
 	slider.set_block_signals(false)
-	time_requested.emit(clampf(time, start, end))
+	range_changed.emit(previous_start)
 
 func accept(value: float) -> void:
 	time = value
@@ -85,13 +91,19 @@ func accept(value: float) -> void:
 	message.text = "t = %.3f s" % time
 
 func _process(delta: float) -> void:
-	if direction == 0: return
-	var next_time := time + delta * speed * direction
-	if next_time > end or next_time < start:
-		if looping: next_time = start + fposmod(next_time - start, end - start)
+	if direction == 0 or busy: return
+	remainder += delta * speed
+	var steps := int(floor(remainder / STEP))
+	if steps == 0: return
+	remainder -= steps * STEP
+	var last := maxi(0, int(floor((end - start) / STEP + 0.000001)))
+	var index := int(round((time - start) / STEP)) + steps * direction
+	if index > last or index < 0:
+		if looping: index = posmod(index, maxi(1, last))
 		else:
-			next_time = clampf(next_time, start, end)
+			index = clampi(index, 0, last)
 			pause()
+	var next_time := start + index * STEP
 	time_requested.emit(next_time)
 
 func button(parent: Node, title: String, action: Callable) -> void:

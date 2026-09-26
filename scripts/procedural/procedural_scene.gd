@@ -16,6 +16,8 @@ var selected_card = null
 const Graph = preload("res://scripts/procedural/scene_graph_4d.gd")
 const HierarchyRow = preload("res://scripts/procedural/hierarchy_row.gd")
 var graph := Graph.new()
+var recording := preload("res://scripts/procedural/simulation_recording.gd").new()
+var pending_seek: Variant = null
 var by_id: Dictionary = {}
 var folded: Dictionary = {}
 # Visible entries are automatic group/geometry pairs. Cards lists geometry only.
@@ -116,7 +118,8 @@ func _ready() -> void:
 	bottom.offset_top = -166
 	bottom.offset_bottom = -12
 	bottom.add_child(timeline)
-	timeline.time_requested.connect(evaluate_time)
+	timeline.time_requested.connect(request_time)
+	timeline.range_changed.connect(change_range)
 	rebuild_tree.call_deferred()
 	var collapse := Button.new()
 	collapse.text = "◀"
@@ -162,7 +165,7 @@ func add_shape(index: int):
 	pairs[group_id] = {"card": card, "group_card": group_card, "editor": editor}
 	cards.append(card)
 	select_card(card)
-	evaluate_time(timeline.time)
+	reset_recording()
 	return card
 
 func create_card(model, renderer, id: int, editor: TabContainer):
@@ -198,17 +201,71 @@ func remove_card(card) -> void:
 	pair.editor.queue_free()
 	if selected_card == geometry: selected_card = cards[mini(index, cards.size() - 1)] if not cards.is_empty() else null
 	queue_tree_rebuild()
-	evaluate_time(timeline.time)
+	reset_recording()
 
 func apply_card(card) -> void:
+	var old_sources: Dictionary = card.object.sources.duplicate()
 	if card.object.apply_sources(card.draft(), timeline.time):
 		card.clear_errors()
 		for key in card.fields: card.fields[key].text = card.object.sources[key]
-		evaluate_time(timeline.time)
+		var simulation_changed := false
+		for key in old_sources:
+			if not key.begins_with("projection.") and old_sources[key] != card.object.sources[key]: simulation_changed = true
+		if simulation_changed: reset_recording()
+		else: display_time(timeline.time)
 	else:
 		card.show_error(card.object.error_field, card.object.error)
 
+## Direct seek used by scripts/tests; UI requests use bounded batches below.
 func evaluate_time(value: float) -> bool:
+	if not recording.seek(value, validate_step):
+		timeline.pause()
+		timeline.message.text = "Paused: " + graph.error
+		return false
+	return display_time(recording.time_at(recording.current_step))
+
+func validate_step(value: float) -> bool:
+	return graph.sample(value) != null
+
+func reset_recording() -> void:
+	pending_seek = null
+	timeline.busy = false
+	timeline.pause()
+	recording.reset(timeline.start, timeline.end)
+	timeline.accept(timeline.start)
+	evaluate_time(timeline.start)
+
+func change_range(previous_start: float) -> void:
+	pending_seek = null
+	if previous_start != timeline.start:
+		reset_recording()
+	else:
+		recording.trim(timeline.end)
+		request_time(clampf(timeline.time, timeline.start, timeline.end))
+
+func request_time(value: float) -> void:
+	timeline.busy = true
+	pending_seek = value
+	advance_seek()
+
+func _process(_delta: float) -> void:
+	if pending_seek != null: advance_seek()
+
+func advance_seek() -> void:
+	var value: float = pending_seek
+	if not recording.seek(value, validate_step, 120):
+		pending_seek = null
+		timeline.busy = false
+		timeline.pause()
+		timeline.message.text = "Paused: " + graph.error
+	elif recording.ready_at(value):
+		pending_seek = null
+		timeline.busy = false
+		display_time(recording.time_at(recording.current_step))
+	else:
+		timeline.message.text = "Simulating to %.3f s · recorded %.3f s" % [value, recording.time_at(recording.frames.size() - 1)]
+
+func display_time(value: float) -> bool:
 	var state = graph.sample(value)
 	if state == null:
 		timeline.pause()
@@ -232,6 +289,8 @@ func evaluate_time(value: float) -> bool:
 	return true
 
 func deactivate() -> void:
+	pending_seek = null
+	timeline.busy = false
 	timeline.pause()
 
 ## Selection changes only the visible editor; all objects keep rendering and animating.
@@ -336,7 +395,7 @@ func reparent_node(id: int, parent: int) -> bool:
 	tree_message.hide()
 	folded.erase(parent)
 	select_card(pairs[id].card)
-	evaluate_time(timeline.time)
+	reset_recording()
 	return true
 
 func show_tree_error(text: String) -> void:
