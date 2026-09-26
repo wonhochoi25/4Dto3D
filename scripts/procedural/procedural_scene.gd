@@ -138,6 +138,14 @@ func add_shape(index: int):
 	model.color = Color.from_hsv(fmod(cards.size() * 0.19 + 0.55, 1.0), 0.65, 0.95, 0.22)
 	var group_model := ObjectModel.new(-1)
 	group_model.node_name = "Group · affects this shape and descendants"
+	# Compile before adding nodes so invalid defaults cannot leave half a pair.
+	if not model.initialize_defaults(model.shape.procedural_defaults.get("geometry", {}), timeline.time):
+		show_tree_error("Geometry " + model.error_field + ": " + model.error)
+		return null
+	if not group_model.initialize_defaults(model.shape.procedural_defaults.get("group", {}), timeline.time):
+		show_tree_error("Group " + group_model.error_field + ": " + group_model.error)
+		return null
+	tree_message.hide()
 	var group_id := graph.add(group_model)
 	var id := graph.add(model)
 	graph.entries[id].parent = group_id

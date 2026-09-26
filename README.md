@@ -234,14 +234,41 @@ Procedural sidebar selection uses an indented scene tree. Select one shape to op
 
 Procedural anchor edits now have a per-shape **Keep shape in place when editing anchor** checkbox (on by default) in the Anchor section. On Apply, an anchor expression change adds the constant correction `RS(t_edit) * (a_new(t_edit) - a_old(t_edit))` to the Position expressions. The adjusted expressions are shown in the Position fields. This preserves the pose at the current time for anchor-only edits; simultaneously changing scale/rotation/position still has its intended effect. Compensation runs only when applying changed anchor expressions, never during playback. Animated anchors remain animated, and their future trajectory can change; scrubbing remains deterministic. Disable the checkbox for direct anchor edits without compensation.
 
-## Custom JSON shape
+## Custom JSON shapes
 
-Edit `data/custom_shape.json`, restart the app, and select **Custom (JSON)** in either workspace. The supplied example is a tesseract with 16 vertices, 32 edges, and 24 faces. No import dialog or validation layer is involved.
+Put one shape per JSON file in `data/custom_shapes/`, then restart the application. The registry scans this folder once at startup, sorts filenames, and adds each file to both shape dropdowns using its `name`. Built-ins keep their existing entries. File paths are cache IDs, so identical names do not share geometry. Each procedural Add shape creates a fresh instance; Playground caches its own instance.
 
-`name` is a display label. `vertices` contains `[x,y,z,w]` arrays. `edges` contains pairs of zero-based vertex indices. Optional `faces` contains ordered polygon index lists for procedural transparent rendering; without faces, procedural objects default to edges. Use convex planar polygons with the existing fan triangulation. Coordinates are loaded literally without normalization. Reset uses the loaded coordinates.
+`vertices` contains `[x,y,z,w]` points, `edges` contains pairs of zero-based indices, and optional `faces` contains ordered convex planar polygon index lists. Coordinates are loaded literally. Without faces, procedural rendering defaults to edges. The files remain trusted sandbox data, not a general import format with extensive validation.
 
-The loader is `scripts/shapes/file_shape_4d.gd`. It reads the file on construction; Playground caches its model, while each newly added procedural custom object reads a fresh independent instance. Existing objects are not hot-reloaded. The file is assumed to be valid sandbox data. Include this JSON in export non-resource filters if packaging the app.
+Optional expression defaults use this structure (shown separately from the required geometry):
 
+```json
+{
+  "procedural_defaults": {
+    "geometry": {
+      "position": {"X": "sin(t)", "W": "2"},
+      "rotation": {"XW": "30*t"},
+      "scale": {"X": "2", "Y": "1"},
+      "anchor": {"W": "1"},
+      "projection": [["1","0","0","0"], ["0","1","0","0"], ["0","0","1","0"]]
+    },
+    "group": {
+      "position": {"Y": "3"},
+      "rotation": {"ZW": "15*t"},
+      "scale": "1",
+      "anchor": {"X": "0"}
+    }
+  }
+}
+```
+
+Position, geometry scale, and anchor use X/Y/Z/W keys. Rotation uses XY/XZ/XW/YZ/YW/ZW in degrees. Group scale is one uniform expression. Projection is three output rows by four input columns. Values may be expression strings or numbers; omitted fields keep identity defaults.
+
+Both sets of defaults compile before inserting the pair, at the current timeline time. Invalid expressions report their component and field in the sidebar and prevent insertion. Position and anchor initialize literally, without edit-time compensation. After loading, both editor tabs are editable normally and no longer depend on the file. Playground reads geometry only and ignores these procedural defaults.
+
+The supplied `hi_4d.json` contains the word geometry and the rotation/projection expressions for the reveal. Use a 0–10 second timeline to see HI → 4D → HI. Timeline and parenting are not stored in shape files.
+
+Include `data/custom_shapes/*.json` and `data/faces/*.json` in export non-resource filters when packaging. Run `tests/verify_custom_shapes.gd` to check discovery, independent instances, defaults, editor values, and anchor initialization.
 
 ## Procedural scene hierarchy
 

@@ -1,6 +1,8 @@
 extends RefCounted
 ## Base model. A generator fills vertices/edges, then captures its reset coordinates.
 ## Rendering and UI never belong here. Edges always refer to stable vertex IDs.
+## Optional initial expressions; evaluated only by the procedural workspace.
+var procedural_defaults: Dictionary = {}
 var display_name := "Shape"
 var description := ""
 var vertices: Array[Vector4] = []

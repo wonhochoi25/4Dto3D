@@ -25,7 +25,7 @@ func _init(index: int = 0) -> void:
 		shape.display_name = "Group"
 	else:
 		shape = Registry.create(index)
-		if Registry.ENTRIES[index]["id"] == "custom":
+		if Registry.ENTRIES[index].has("path"):
 			faces = shape.faces
 			show_edges = faces.is_empty()
 		else:
@@ -38,6 +38,31 @@ func _init(index: int = 0) -> void:
 	for row in range(3):
 		for col in range(4): sources["projection.%d" % (row * 4 + col)] = "1" if row == col else "0"
 	apply_sources(sources, 0)
+
+## Initial JSON settings are literal PRSA values, not compensated anchor edits.
+## Reuse the same compiler and atomic validation as the expression editor.
+func initialize_defaults(settings: Dictionary, time: float) -> bool:
+	var candidate := sources.duplicate()
+	var axes := ["X", "Y", "Z", "W"]
+	for component in ["position", "anchor", "scale"]:
+		if component == "scale" and is_group:
+			candidate["scale.0"] = str(settings.get("scale", "1"))
+			continue
+		var values: Dictionary = settings.get(component, {})
+		for axis in range(4):
+			if values.has(axes[axis]): candidate["%s.%d" % [component, axis]] = str(values[axes[axis]])
+	var planes := ["XY", "XZ", "XW", "YZ", "YW", "ZW"]
+	var rotation: Dictionary = settings.get("rotation", {})
+	for plane in range(6):
+		if rotation.has(planes[plane]): candidate["angles.%d" % plane] = str(rotation[planes[plane]])
+	if not is_group and settings.has("projection"):
+		for row in range(3):
+			for col in range(4): candidate["projection.%d" % (row * 4 + col)] = str(settings.projection[row][col])
+	var compensate := keep_anchor_in_place
+	keep_anchor_in_place = false
+	var accepted := apply_sources(candidate, time)
+	keep_anchor_in_place = compensate
+	return accepted
 
 ## Compile all fields and evaluate a trial frame before committing any expression.
 func apply_sources(candidate: Dictionary, time: float) -> bool:
