@@ -9,6 +9,7 @@ const ENTRIES = [
 	{"id": "cell24", "name": "24-cell", "script": preload("res://scripts/shapes/cell24.gd")},
 	{"id": "cell120", "name": "120-cell", "script": preload("res://scripts/shapes/cell120.gd")},
 	{"id": "cell600", "name": "600-cell", "script": preload("res://scripts/shapes/cell600.gd")},
+	{"id": "custom", "name": "Custom (JSON)", "script": preload("res://scripts/shapes/file_shape_4d.gd")},
 ]
 static func create(index: int):
 	return ENTRIES[index]["script"].new()

@@ -11,7 +11,7 @@ func _initialize() -> void:
 func verify() -> void:
 	root.size = Vector2i(1440, 900)
 	var expected := [[16, 32, 4], [80, 208, 0], [5, 10, 4], [8, 24, 6], [24, 96, 8], [600, 1200, 4], [120, 720, 12]]
-	for index in range(Registry.ENTRIES.size()):
+	for index in range(expected.size()):
 		var shape = Registry.create(index)
 		check(shape.vertices.size() == expected[index][0], shape.display_name + " vertex count")
 		check(shape.edges.size() == expected[index][1], shape.display_name + " edge count")
@@ -56,7 +56,7 @@ func verify() -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	root.add_child(scene)
 	await process_frame
-	check(scene.projection_panel.selector.item_count == 7, "Dropdown entries")
+	check(scene.projection_panel.selector.item_count == Registry.ENTRIES.size(), "Dropdown entries")
 	var matrix = scene.projection.rows.duplicate()
 	scene.editor.edit_coordinate(3.25, 0, 0)
 	scene.editor.undo()

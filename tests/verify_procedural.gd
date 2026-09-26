@@ -7,6 +7,29 @@ func check(value: bool, message: String) -> void:
 func _initialize() -> void:
 	call_deferred("verify")
 func verify() -> void:
+	var model = load("res://scripts/procedural/procedural_object.gd").new(0)
+	var expressions = model.sources.duplicate()
+	expressions["angles.2"] = "30*t"
+	expressions["scale.0"] = "2"
+	expressions["position.1"] = "sin(t)"
+	check(model.apply_sources(expressions, 2), "Anchor test setup")
+	var before = model.evaluate(2)
+	expressions = model.sources.duplicate()
+	expressions["anchor.0"] = "t"
+	expressions["anchor.3"] = "3"
+	check(model.apply_sources(expressions, 2), "Apply compensated anchor")
+	var after = model.evaluate(2)
+	for i in range(before.size()): check(before[i].distance_to(after[i]) < 0.0001, "Compensated projected geometry")
+	var saved = model.sources.duplicate()
+	check(model.apply_sources(saved, 2) and model.sources == saved, "Repeated apply does not accumulate compensation")
+	model.evaluate(7)
+	check(model.evaluate(2) == after, "Compensation is deterministic during scrubbing")
+	model.keep_anchor_in_place = false
+	expressions = model.sources.duplicate()
+	expressions["anchor.0"] = "5"
+	check(model.apply_sources(expressions, 2), "Apply uncompensated anchor")
+	check(model.sources["position.0"] == saved["position.0"], "Disabled compensation preserves position expression")
+	check(model.evaluate(2) != after, "Disabled compensation moves geometry")
 	root.size = Vector2i(1440, 900)
 	var app = load("res://scenes/app.tscn").instantiate()
 	root.add_child(app)

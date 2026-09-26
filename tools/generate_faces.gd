@@ -10,6 +10,7 @@ var cycle_size := 3
 func _initialize() -> void:
 	for index in range(Registry.ENTRIES.size()):
 		var id: String = Registry.ENTRIES[index]["id"]
+		if id == "custom": continue # Custom faces come directly from the editable JSON.
 		var shape = Registry.create(index)
 		adjacency.clear()
 		faces.clear()

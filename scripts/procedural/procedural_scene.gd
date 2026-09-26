@@ -150,6 +150,7 @@ func remove_card(card) -> void:
 func apply_card(card) -> void:
 	if card.object.apply_sources(card.draft(), timeline.time):
 		card.clear_errors()
+		for key in card.fields: card.fields[key].text = card.object.sources[key]
 		evaluate_time(timeline.time)
 	else:
 		card.show_error(card.object.error_field, card.object.error)

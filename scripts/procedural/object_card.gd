@@ -10,6 +10,7 @@ var errors: Dictionary = {}
 var body: VBoxContainer
 var message: Label
 var runtime_error := false
+var anchor_keep_toggle: CheckBox
 
 func setup(model, mesh_renderer) -> void:
 	add_theme_stylebox_override("panel", preload("res://scripts/procedural/procedural_theme.gd").box("192333", 12, 8, "40516a"))
@@ -38,6 +39,7 @@ func setup(model, mesh_renderer) -> void:
 	appearance.add_child(visible_toggle)
 	var edge_toggle := CheckBox.new()
 	edge_toggle.text = "Edges"
+	edge_toggle.button_pressed = object.show_edges
 	edge_toggle.toggled.connect(func(value: bool): object.show_edges = value; style_changed.emit(self))
 	appearance.add_child(edge_toggle)
 	var color := ColorPickerButton.new()
@@ -64,6 +66,17 @@ func setup(model, mesh_renderer) -> void:
 		var section := VBoxContainer.new()
 		section.name = "Rotation" if component == "angles" else component.capitalize()
 		tabs.add_child(section)
+		if component == "anchor":
+			anchor_keep_toggle = CheckBox.new()
+			anchor_keep_toggle.text = "Keep shape in place when editing anchor"
+			anchor_keep_toggle.button_pressed = object.keep_anchor_in_place
+			anchor_keep_toggle.tooltip_text = "On Apply, compensate Position at the current time. Anchor animation still runs normally."
+			anchor_keep_toggle.toggled.connect(func(enabled: bool): object.keep_anchor_in_place = enabled)
+			section.add_child(anchor_keep_toggle)
+			var note := Label.new()
+			note.text = "Adjusts Position expressions at the current t on Apply."
+			note.add_theme_font_size_override("font_size", 13)
+			section.add_child(note)
 		var names := ["X", "Y", "Z", "W"]
 		if component == "angles": names = ["XY", "XZ", "XW", "YZ", "YW", "ZW"]
 		if component == "projection":

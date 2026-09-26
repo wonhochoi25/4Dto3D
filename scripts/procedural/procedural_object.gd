@@ -11,14 +11,19 @@ var compiled: Dictionary = {}
 var color := Color(0.25, 0.72, 1.0, 0.25)
 var visible := true
 var show_edges := false
+var keep_anchor_in_place := true
 var last_points := PackedVector3Array()
 var error_field := ""
 var error := ""
 
 func _init(index: int = 0) -> void:
 	shape = Registry.create(index)
-	var path: String = "res://data/faces/%s.json" % Registry.ENTRIES[index]["id"]
-	faces = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if Registry.ENTRIES[index]["id"] == "custom":
+		faces = shape.faces
+		show_edges = faces.is_empty()
+	else:
+		var path: String = "res://data/faces/%s.json" % Registry.ENTRIES[index]["id"]
+		faces = JSON.parse_string(FileAccess.get_file_as_string(path))
 	for component in ["position", "anchor", "scale"]:
 		for axis in range(4): sources["%s.%d" % [component, axis]] = "1" if component == "scale" else "0"
 	for axis in range(6): sources["angles.%d" % axis] = "0"
@@ -38,7 +43,38 @@ func apply_sources(candidate: Dictionary, time: float) -> bool:
 		next[key] = parser
 	if evaluate(time, next) == null:
 		return false
-	sources = candidate.duplicate()
+	var adjusted := candidate.duplicate()
+	var anchor_changed := false
+	for axis in range(4):
+		var key := "anchor.%d" % axis
+		anchor_changed = anchor_changed or candidate[key] != sources[key]
+	if keep_anchor_in_place and anchor_changed and not compiled.is_empty():
+		# Bake an edit-time correction into Position expressions, not a frame accumulator.
+		var delta := Vector4.ZERO
+		var transform := Transform4D.new()
+		for axis in range(4):
+			var key := "anchor.%d" % axis
+			var old_value = compiled[key].evaluate(time)
+			if old_value == null:
+				error_field = key
+				error = "Cannot compensate the previous anchor at this time. Disable Keep shape in place or scrub to a valid time."
+				return false
+			delta[axis] = next[key].evaluate(time) - old_value
+			transform.scale[axis] = next["scale.%d" % axis].evaluate(time)
+		for axis in range(6): transform.angles[axis] = next["angles.%d" % axis].evaluate(time)
+		var correction := Transform4D.apply(Transform4D.multiply(transform.rotation_matrix(), transform.scaling_matrix()), delta, 0)
+		for axis in range(4):
+			if is_zero_approx(correction[axis]): continue
+			var key := "position.%d" % axis
+			adjusted[key] = "(%s)+(%.9f)" % [candidate[key], correction[axis]]
+			var parser := MathExpression.new()
+			if not parser.compile(adjusted[key]):
+				error_field = key
+				error = parser.error
+				return false
+			next[key] = parser
+		if evaluate(time, next) == null: return false
+	sources = adjusted
 	compiled = next
 	return true
 
