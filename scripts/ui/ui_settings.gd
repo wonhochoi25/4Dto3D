@@ -1,3 +1,2 @@
-extends RefCounted
-## Shared by all numeric controls. Preserves the user's configured increment.
-const FIELD_STEP = 0.001
+extends "res://scripts/sandbox/ui/ui_settings.gd"
+## Compatibility alias; use the layered implementation for new code.

@@ -1,5 +1,19 @@
 # 4D → 3D Projection Lab
 
+## Runtime architecture
+
+The reusable Godot-dependent runtime is now in **`scripts/core/`**. It runs without sandbox UI, IO, asset files, cameras, or renderers. See [the architecture and API guide](docs/ARCHITECTURE.md) for the canonical directory map and a minimal in-memory example.
+
+- `scripts/core/`: geometry, math, transform tracks, hierarchy, simulation, recording, playback, and Session API.
+- `scripts/io/`: file loading and application asset catalog.
+- `scripts/rendering/`: projection presentation and Godot mesh adapters.
+- `scripts/sandbox/`: Playground, procedural editor, controls, tabs, camera input.
+
+Older paths mentioned below remain compatibility aliases. New code should import the canonical paths from the architecture guide. Session mutations own history invalidation; inspector widgets are views of objects, not their owners. Simulation evaluates 4D transforms only, and projection occurs when displaying a frame.
+
+Run `python3 tools/verify_core_isolation.py /path/to/godot` to verify dependency boundaries and execute the core in a minimal temporary project containing no other application code.
+
+
 Godot 4.7 viewer for editing 4D vertex coordinates and displaying a linear 3D projection. The 4D model is authoritative; rendering never changes it.
 
 ## Run and controls

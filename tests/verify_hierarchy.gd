@@ -83,7 +83,7 @@ func verify() -> void:
 	var rows = scene.list.find_children("*", "Button", true, false)
 	var tree_rows := 0
 	for row in rows:
-		if row.get_script() == load("res://scripts/procedural/hierarchy_row.gd"): tree_rows += 1
+		if row.get_script() == load("res://scripts/sandbox/procedural/hierarchy_row.gd"): tree_rows += 1
 	check(tree_rows == 3, "Only World and two shape rows")
 	configure(parent_card.object, {"position.0": "10"}, 0)
 	var geometry_edit = scene.graph.sample(0)
