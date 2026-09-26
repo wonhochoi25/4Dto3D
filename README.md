@@ -186,12 +186,12 @@ Scale controls also have four live sliders and shared **Min / Max / Apply range*
 
 F5 now launches `scenes/app.tscn`. The original `scenes/main.tscn` and Playground scripts are unchanged and instantiated inside the first, unclosable tab. **+** opens a new empty procedural experiment. **×** frees that experiment; switching away pauses its timeline. Each tab owns a separate SubViewport/World3D, camera, input processing, and data. Tabs exist only in memory; closing a procedural tab discards it.
 
-In Procedural, choose a shape and **Add shape**. Add multiple instances independently. Each expandable card has visibility, color, opacity, optional edge overlay, Remove, and five expression sections:
+In Procedural, choose a shape and **Add shape**. Add multiple instances independently. Select its tree row to open its inline editor, which has visibility, color, opacity, optional edge overlay, Remove, and five expression sections:
 
 - Position: four scalar expressions (default 0).
 - Rotation: XY/XZ/XW/YZ/YW/ZW angle expressions, output in degrees (default 0).
 - Scale: four expressions (default 1).
-- Anchor: four expressions (default 0), directly applied without compensation.
+- Anchor: four expressions (default 0), with optional edit-time compensation described below.
 - Projection: twelve independent scalar expressions, one for each output/input coefficient (default XYZ). For example, `X ← W` controls the contribution of W to displayed X.
 
 **Apply expressions** compiles and validates all 30 fields as a unit. Editing text does not alter the running programs until Apply succeeds. Syntax/name errors identify the field and preserve the previously applied expressions. Runtime errors pause playback and preserve the time and geometry of the last fully valid frame across every shape. Scrubbing back to a valid time clears runtime errors.
@@ -230,7 +230,7 @@ At each requested time the renderer fan-triangulates transformed/projected faces
 
 Run `res://tests/verify_procedural.gd` headlessly for tab lifecycle/isolation, deterministic reverse evaluation, independent projection, compile/runtime error handling, face mesh creation, timeline bounds/looping, negative time, and UI size checks. Existing Playground and transform suites remain applicable. A local headless CPU benchmark with all seven shapes was about 4 ms per frame for evaluation plus mesh generation; this excludes GPU transparency rendering and is not an interactive framerate guarantee.
 
-Procedural sidebar selection: the shape-instance dropdown selects one expression editor at a time, with numbered labels distinguishing duplicate shape types. New shapes are selected automatically; removing the selected shape selects a nearby remaining one. Other shapes continue rendering and animating, and expression drafts survive selection changes. The sidebar fits its visible content and scrolls only when needed. Playback buttons and time status are centered.
+Procedural sidebar selection uses an indented scene tree. Select one shape to open its inline Geometry and Group tabs. Expression drafts survive selection and hierarchy changes. The sidebar fits its visible content and scrolls when needed. Playback buttons and time status are centered.
 
 Procedural anchor edits now have a per-shape **Keep shape in place when editing anchor** checkbox (on by default) in the Anchor section. On Apply, an anchor expression change adds the constant correction `RS(t_edit) * (a_new(t_edit) - a_old(t_edit))` to the Position expressions. The adjusted expressions are shown in the Position fields. This preserves the pose at the current time for anchor-only edits; simultaneously changing scale/rotation/position still has its intended effect. Compensation runs only when applying changed anchor expressions, never during playback. Animated anchors remain animated, and their future trajectory can change; scrubbing remains deterministic. Disable the checkbox for direct anchor edits without compensation.
 
@@ -241,3 +241,35 @@ Edit `data/custom_shape.json`, restart the app, and select **Custom (JSON)** in 
 `name` is a display label. `vertices` contains `[x,y,z,w]` arrays. `edges` contains pairs of zero-based vertex indices. Optional `faces` contains ordered polygon index lists for procedural transparent rendering; without faces, procedural objects default to edges. Use convex planar polygons with the existing fan triangulation. Coordinates are loaded literally without normalization. Reset uses the loaded coordinates.
 
 The loader is `scripts/shapes/file_shape_4d.gd`. It reads the file on construction; Playground caches its model, while each newly added procedural custom object reads a fresh independent instance. Existing objects are not hot-reloaded. The file is assumed to be valid sandbox data. Include this JSON in export non-resource filters if packaging the app.
+
+
+## Procedural scene hierarchy
+
+The tree starts at **World**. Parents appear above indented children, with vertical hierarchy guides. **Add shape** automatically creates a group and its geometry leaf, shown as one shape row under World. There are no separate Add group or Wrap actions. Playground remains independent.
+
+- Click a tree row to select it and open its editor beneath that row. Click **World** or empty viewport space to close the editor. Only one editor is open at a time.
+- Click a rendered shape to select it. Selection highlights its edges in gold without changing its saved edge-overlay setting. Picking chooses the closest projected face; wire-only shapes use screen-space edge proximity.
+- Drag a shape onto another shape to parent it, or onto **World** to unparent it. The selected shape also has a **Parent** dropdown. Internally, its group becomes a child of the destination group, never of the destination geometry. Cycles are rejected.
+- Group arrows collapse descendants independently of selection. Rename the selected node with its name field and Enter.
+- **Remove shape** in either tab deletes the selected group/geometry pair. Child shapes move up to its parent, preserving their current world poses.
+
+The **Group** tab exposes position, six rotation planes, one uniform scale, and anchor expressions. These affect the shape itself and its descendants. The **Geometry** tab retains independent four-axis scale, appearance, and its own 3×4 projection, affecting only that shape. Both tabs preserve drafts and the selected tab across tree rebuilds. Group transforms affect all descendants; geometry transforms affect only that leaf. Group uniform scale keeps inherited transforms free of nonuniform-scale-induced shear. Projection happens after the complete 4D transform chain and is never inherited from another shape.
+
+`procedural/scene_graph_4d.gd` owns stable node IDs, parent links, matrix offsets, and recursive time evaluation independently of Godot's 3D node hierarchy. `hierarchy_row.gd` supplies drag/drop behavior; `procedural_scene.gd` builds the tree and manages selection. `procedural_object.gd` evaluates local expressions for either node type.
+
+For each node, the 5×5 world matrix is:
+
+```text
+world(t) = parent_world(t) * parenting_offset * local_PRSA(t)
+```
+
+Parenting pauses time and preserves the world pose at that time by replacing the group’s fixed offset. The geometry matrix and both tabs’ expressions stay unchanged:
+
+```text
+new_offset = inverse(new_parent_world(t_edit))
+             * old_parent_world(t_edit) * old_offset
+```
+
+Expressions and their drafts remain intact. Later motion follows the new parent, so the trajectory at other times may change. Scrubbing remains deterministic because the offset is constant. This requires no inverse of the child's transform, so zero-scale children can be reparented. A singular destination parent is rejected because a world-preserving inverse is unavailable.
+
+Run `res://tests/verify_hierarchy.gd` headlessly for nested transforms, keep-world parenting/unparenting, cycle prevention, singular-parent handling, group removal, reverse-time determinism, implicit pairs, Geometry versus Group transform scope, editor/tab preservation, drag/drop, and viewport selection.

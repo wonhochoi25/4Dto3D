@@ -4,6 +4,9 @@ extends Node3D
 var surface := MeshInstance3D.new()
 var edges := MeshInstance3D.new()
 var face_material := StandardMaterial3D.new()
+var selected := false
+var original_edge_color := Color.WHITE
+var object_edges := false
 var edge_material := StandardMaterial3D.new()
 
 func _ready() -> void:
@@ -20,8 +23,9 @@ func _ready() -> void:
 func update_style(object) -> void:
 	visible = object.visible
 	face_material.albedo_color = object.color
-	edge_material.albedo_color = Color(object.color.r, object.color.g, object.color.b, 0.7)
-	edges.visible = object.show_edges
+	original_edge_color = Color(object.color.r, object.color.g, object.color.b, 0.7)
+	object_edges = object.show_edges
+	set_selected(selected)
 
 func render(object, points: PackedVector3Array) -> void:
 	var vertices := PackedVector3Array()
@@ -54,3 +58,9 @@ func render(object, points: PackedVector3Array) -> void:
 	line_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, line_arrays)
 	edges.mesh = line_mesh
 	update_style(object)
+
+## Selection reveals gold edges without changing the object's saved appearance settings.
+func set_selected(value: bool) -> void:
+	selected = value
+	edges.visible = object_edges or selected
+	edge_material.albedo_color = Color(1.0, 0.8, 0.3, 1.0) if selected else original_edge_color

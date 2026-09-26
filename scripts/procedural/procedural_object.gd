@@ -5,6 +5,8 @@ const MathExpression = preload("res://scripts/procedural/math_expression.gd")
 const Transform4D = preload("res://scripts/geometry/transform_4d.gd")
 const Projection4D = preload("res://scripts/geometry/projection_4d.gd")
 var shape
+var is_group := false
+var node_name := ""
 var faces: Array = []
 var sources: Dictionary = {}
 var compiled: Dictionary = {}
@@ -17,13 +19,19 @@ var error_field := ""
 var error := ""
 
 func _init(index: int = 0) -> void:
-	shape = Registry.create(index)
-	if Registry.ENTRIES[index]["id"] == "custom":
-		faces = shape.faces
-		show_edges = faces.is_empty()
+	is_group = index == -1
+	if is_group:
+		shape = preload("res://scripts/shapes/shape_4d.gd").new()
+		shape.display_name = "Group"
 	else:
-		var path: String = "res://data/faces/%s.json" % Registry.ENTRIES[index]["id"]
-		faces = JSON.parse_string(FileAccess.get_file_as_string(path))
+		shape = Registry.create(index)
+		if Registry.ENTRIES[index]["id"] == "custom":
+			faces = shape.faces
+			show_edges = faces.is_empty()
+		else:
+			var path: String = "res://data/faces/%s.json" % Registry.ENTRIES[index]["id"]
+			faces = JSON.parse_string(FileAccess.get_file_as_string(path))
+	node_name = shape.display_name
 	for component in ["position", "anchor", "scale"]:
 		for axis in range(4): sources["%s.%d" % [component, axis]] = "1" if component == "scale" else "0"
 	for axis in range(6): sources["angles.%d" % axis] = "0"
@@ -33,6 +41,11 @@ func _init(index: int = 0) -> void:
 
 ## Compile all fields and evaluate a trial frame before committing any expression.
 func apply_sources(candidate: Dictionary, time: float) -> bool:
+	candidate = candidate.duplicate()
+	if is_group:
+		for axis in range(1, 4): candidate["scale.%d" % axis] = candidate.get("scale.0", "1")
+		for row in range(3):
+			for column in range(4): candidate["projection.%d" % (row * 4 + column)] = "1" if row == column else "0"
 	var next := {}
 	for key in sources:
 		var parser := MathExpression.new()
@@ -79,7 +92,7 @@ func apply_sources(candidate: Dictionary, time: float) -> bool:
 	return true
 
 ## Pure sampling at t: no integration, anchor compensation, or previous-frame state.
-func evaluate(time: float, programs: Dictionary = {}) -> Variant:
+func sample(time: float, programs: Dictionary = {}) -> Variant:
 	error = ""
 	error_field = ""
 	if programs.is_empty(): programs = compiled
@@ -101,7 +114,20 @@ func evaluate(time: float, programs: Dictionary = {}) -> Variant:
 	var projection := Projection4D.new()
 	for row in range(3):
 		for col in range(4): projection.rows[row][col] = values["projection.%d" % (row * 4 + col)]
-	var points := projection.project(transform.transform_vertices(shape.vertices))
+	var matrix := transform.matrix()
+	for value in matrix:
+		if not is_finite(value):
+			error = "Transform overflow at t = %.3f." % time
+			return null
+	return {"matrix": matrix, "projection": projection}
+
+## Standalone sampling retained for expression validation and non-hierarchical callers.
+func evaluate(time: float, programs: Dictionary = {}) -> Variant:
+	var sampled = sample(time, programs)
+	if sampled == null: return null
+	var vertices: Array[Vector4] = []
+	for point in shape.vertices: vertices.append(Transform4D.apply(sampled.matrix, point))
+	var points: PackedVector3Array = sampled.projection.project(vertices)
 	for point in points:
 		if not point.is_finite():
 			error = "Transform or projection overflow at t = %.3f." % time

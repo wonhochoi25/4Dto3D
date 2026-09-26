@@ -10,6 +10,7 @@ var errors: Dictionary = {}
 var body: VBoxContainer
 var message: Label
 var runtime_error := false
+var heading: Label
 var anchor_keep_toggle: CheckBox
 
 func setup(model, mesh_renderer) -> void:
@@ -20,12 +21,12 @@ func setup(model, mesh_renderer) -> void:
 	add_child(box)
 	var header := HBoxContainer.new()
 	box.add_child(header)
-	var heading := Label.new()
-	heading.text = object.shape.display_name
+	heading = Label.new()
+	heading.text = object.node_name
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(heading)
 	var remove := Button.new()
-	remove.text = "Remove"
+	remove.text = "Remove shape"
 	remove.pressed.connect(func(): remove_requested.emit(self))
 	header.add_child(remove)
 	body = VBoxContainer.new()
@@ -59,16 +60,18 @@ func setup(model, mesh_renderer) -> void:
 	opacity.custom_minimum_size.x = 100
 	opacity.value_changed.connect(func(value: float): object.color.a = value; style_changed.emit(self))
 	appearance.add_child(opacity)
+	appearance.visible = not object.is_group
 	var tabs := TabContainer.new()
 	tabs.use_hidden_tabs_for_min_size = false
 	body.add_child(tabs)
 	for component in ["position", "angles", "scale", "anchor", "projection"]:
+		if object.is_group and component == "projection": continue
 		var section := VBoxContainer.new()
 		section.name = "Rotation" if component == "angles" else component.capitalize()
 		tabs.add_child(section)
 		if component == "anchor":
 			anchor_keep_toggle = CheckBox.new()
-			anchor_keep_toggle.text = "Keep shape in place when editing anchor"
+			anchor_keep_toggle.text = "Keep subtree in place when editing anchor" if object.is_group else "Keep shape in place when editing anchor"
 			anchor_keep_toggle.button_pressed = object.keep_anchor_in_place
 			anchor_keep_toggle.tooltip_text = "On Apply, compensate Position at the current time. Anchor animation still runs normally."
 			anchor_keep_toggle.toggled.connect(func(enabled: bool): object.keep_anchor_in_place = enabled)
@@ -78,6 +81,7 @@ func setup(model, mesh_renderer) -> void:
 			note.add_theme_font_size_override("font_size", 13)
 			section.add_child(note)
 		var names := ["X", "Y", "Z", "W"]
+		if object.is_group and component == "scale": names = ["All"]
 		if component == "angles": names = ["XY", "XZ", "XW", "YZ", "YW", "ZW"]
 		if component == "projection":
 			build_projection_matrix(section)
@@ -112,7 +116,7 @@ func setup(model, mesh_renderer) -> void:
 	message.hide()
 
 func draft() -> Dictionary:
-	var result := {}
+	var result: Dictionary = object.sources.duplicate()
 	for key in fields: result[key] = fields[key].text
 	return result
 

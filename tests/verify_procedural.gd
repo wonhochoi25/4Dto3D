@@ -42,10 +42,10 @@ func verify() -> void:
 	var scene = app.pages[1]["scene"]
 	var first = scene.add_shape(0)
 	var second = scene.add_shape(0)
-	check(scene.selected_card == second and second.visible and not first.visible, "Only newest editor selected")
+	check(scene.selected_card == second and scene.pairs[second.get_meta("group_id")].editor.visible and not scene.pairs[first.get_meta("group_id")].editor.visible, "Only newest editor selected")
 	first.fields["position.0"].text = "t+3"
 	scene.select_card(first)
-	check(first.visible and not second.visible, "Single editor selection")
+	check(scene.pairs[first.get_meta("group_id")].editor.visible and not scene.pairs[second.get_meta("group_id")].editor.visible, "Single editor selection")
 	scene.select_card(second)
 	scene.select_card(first)
 	check(first.fields["position.0"].text == "t+3", "Draft survives selection")
