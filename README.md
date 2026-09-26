@@ -329,3 +329,11 @@ Changing position, rotation, scale, anchor, adding/removing shapes, or parenting
 Current user-created shapes are still expression-driven: procedural transforms are recomputed at the selected time, while step validation checks expressions along unrecorded forward paths. Snapshots store dynamic state only, never vertex arrays or meshes. No dynamic-body UI, forces, gravity, or collision response has been introduced yet; the stepping API is the foundation for that next stage. Memory grows with recorded steps and dynamic-body count within the chosen range.
 
 Run `tests/verify_recording.gd` for constant-velocity integration, exact restoration, extending history after reverse playback, bounded seeks, trimming, edit invalidation, projection preservation, and fractional-step accumulation.
+
+## Try 4D collision detection
+
+In a procedural tab, add two tesseracts and open **Collision inspector (4D GJK)**. Select the two objects. With identity transforms and the default XYZ projection, set the second shape's geometry Position W to `3`: the shapes look identical in projection but are separated in 4D, with a gap of 1. Set W to `2` for contact, or `1` for overlap. Apply the expressions if required by the editor.
+
+The inspector operates on convex hulls of world-space 4D vertices. It reports separated, intersecting/within tolerance, or indeterminate, and shows separating intervals when available. It only detects contact; shapes do not bounce or stop.
+
+Run `tests/verify_gjk.gd` and `tests/verify_collision_inspector.gd` with Godot's `--headless --path . --script` options for mathematical and sandbox integration checks.

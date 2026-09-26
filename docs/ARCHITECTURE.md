@@ -103,3 +103,17 @@ Copy `scripts/core/` into another Godot project at the same path to use the runt
 - `tests/verify_core.gd`: in-memory creation, expression scopes, parenting, simulation-to-scene mapping, replay and deletion.
 - `tools/verify_core_isolation.py GODOT_BINARY`: checks dependency boundaries, copies only core and its test into a temporary minimal Godot project, and runs it there.
 - Existing Playground, transform, hierarchy, custom-shape, recording, resolution, and procedural suites cover sandbox regressions.
+
+## Convex collision queries
+
+`core/collision/convex_vertices_4d.gd` transforms a vertex cloud into a query-local convex support map. Its convex hull is the collider: edges, faces, projection, and render visibility do not affect collision. Concave geometry requires convex decomposition before this query can describe its actual occupied region.
+
+`core/collision/simplex_4d.gd` finds the closest point on a simplex of up to five vertices by examining its features and solving affine closest points with QR. `core/collision/gjk_4d.gd` uses that solver for distance GJK in R4. Intermediate support points and arithmetic use packed doubles.
+
+Call `session.query_collision(a_id, b_id)` with two public object IDs to query their current world geometry transforms, including parenting. This is read-only and does not change playback or recording. The standalone GJK API also accepts support providers exposing `valid`, `center`, `radius`, and `support(direction)`. It needs no UI, renderer, or IO.
+
+Results are `separated`, `intersecting` (including contact within tolerance), or `indeterminate`. Separated results contain distance bounds, witness points, a separating direction, and intervals on that direction. A certified gap can establish separation even if the distance iteration stalls. `converged` describes distance convergence, not whether a separating certificate exists. Simplex difference points are normalized by the returned `simplex_scale`; their original support witnesses are retained. This is not yet an EPA-ready penetration solver.
+
+Tolerance is `1e-7 + 1e-6 * max(radius_a + radius_b, 1e-12)`. Near contact is deliberately approximate. Empty/nonfinite input, exhausted iterations without a certificate, or numerical failure can return indeterminate. This implementation provides no broad phase, continuous collision detection, penetration depth, contact manifold, or response.
+
+The sandbox's collapsible collision inspector chooses two objects, displays the result and separating intervals, and applies a temporary edge highlight. Tests cover analytic box/sphere distances, W-only separation, containment, degeneracy, symmetry, common rotations, scale, and inspector integration.

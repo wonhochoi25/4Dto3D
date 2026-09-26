@@ -175,3 +175,14 @@ func cancel_seek() -> void:
 	playback.pause()
 	recording.simulation.restore(recording.frames[recording.current_step] if not recording.frames.is_empty() else {})
 	sync_dynamic()
+
+## Read-only narrow-phase query of current world state. Colliders are convex hulls.
+func query_collision(a_id: int, b_id: int) -> Dictionary:
+	var gjk = preload("res://scripts/core/collision/gjk_4d.gd")
+	var collider = preload("res://scripts/core/collision/convex_vertices_4d.gd")
+	if a_id == b_id or not scene.objects.has(a_id) or not scene.objects.has(b_id):
+		return gjk.unknown("Choose two different existing objects")
+	var a: Dictionary = scene.objects[a_id]
+	var b: Dictionary = scene.objects[b_id]
+	if not state.has(a.leaf_id) or not state.has(b.leaf_id): return gjk.unknown("No valid evaluated state")
+	return gjk.query(collider.new(a.geometry.vertices,state[a.leaf_id].world),collider.new(b.geometry.vertices,state[b.leaf_id].world))

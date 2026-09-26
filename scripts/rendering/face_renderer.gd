@@ -5,6 +5,7 @@ var surface := MeshInstance3D.new()
 var edges := MeshInstance3D.new()
 var face_material := StandardMaterial3D.new()
 var selected := false
+var collision_color := Color.TRANSPARENT
 var original_edge_color := Color.WHITE
 var object_edges := false
 var edge_material := StandardMaterial3D.new()
@@ -62,5 +63,9 @@ func render(object, points: PackedVector3Array) -> void:
 ## Selection reveals gold edges without changing the object's saved appearance settings.
 func set_selected(value: bool) -> void:
 	selected = value
-	edges.visible = object_edges or selected
-	edge_material.albedo_color = Color(1.0, 0.8, 0.3, 1.0) if selected else original_edge_color
+	edges.visible = object_edges or selected or collision_color.a > 0
+	edge_material.albedo_color = collision_color if collision_color.a > 0 else (Color(1.0, 0.8, 0.3, 1.0) if selected else original_edge_color)
+
+func set_collision_color(value: Color) -> void:
+	collision_color = value
+	set_selected(selected)

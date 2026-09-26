@@ -13,6 +13,7 @@ var count_label: Label
 var panel: PanelContainer
 var camera: Camera3D
 var selected_card = null
+var collision_inspector
 const HierarchyRow = preload("res://scripts/sandbox/procedural/hierarchy_row.gd")
 var session := preload("res://scripts/core/session_4d.gd").new()
 var graph:
@@ -99,6 +100,12 @@ func _ready() -> void:
 	count_label = Label.new()
 	count_label.text = "No shapes yet. Add one to begin."
 	box.add_child(count_label)
+	collision_inspector = preload("res://scripts/sandbox/procedural/collision_inspector.gd").new()
+	collision_inspector.session = session
+	box.add_child(collision_inspector)
+	collision_inspector.highlighted.connect(func(ids: Array, color: Color):
+		for object_id in pairs:
+			pairs[object_id].card.renderer.set_collision_color(color if object_id in ids else Color.TRANSPARENT))
 	var tree_help := Label.new()
 	tree_help.text = "Drag onto a shape to parent; onto World to unparent."
 	tree_help.add_theme_font_size_override("font_size", 13)
@@ -278,6 +285,7 @@ func display_time(value: float) -> bool:
 		card.renderer.render(card.object, projected[id])
 		card.renderer.set_selected(card == selected_card)
 	timeline.accept(value)
+	if is_instance_valid(collision_inspector): collision_inspector.update_query()
 	return true
 
 func deactivate() -> void:
@@ -317,6 +325,9 @@ func rebuild_tree() -> void:
 	world.pressed.connect(func(): select_card(null))
 	list.add_child(world)
 	append_children(0, list)
+	var names := {}
+	for id in pairs: names[id] = pairs[id].card.object.node_name
+	collision_inspector.set_objects(names)
 	count_label.text = "%d shapes · select a row to edit" % cards.size()
 	fit_sidebar.call_deferred()
 
