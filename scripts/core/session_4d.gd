@@ -177,7 +177,7 @@ func cancel_seek() -> void:
 	sync_dynamic()
 
 ## Read-only narrow-phase query of current world state. Colliders are convex hulls.
-func query_collision(a_id: int, b_id: int) -> Dictionary:
+func query_collision(a_id: int, b_id: int, include_penetration: bool = false) -> Dictionary:
 	var gjk = preload("res://scripts/core/collision/gjk_4d.gd")
 	var collider = preload("res://scripts/core/collision/convex_vertices_4d.gd")
 	if a_id == b_id or not scene.objects.has(a_id) or not scene.objects.has(b_id):
@@ -185,4 +185,9 @@ func query_collision(a_id: int, b_id: int) -> Dictionary:
 	var a: Dictionary = scene.objects[a_id]
 	var b: Dictionary = scene.objects[b_id]
 	if not state.has(a.leaf_id) or not state.has(b.leaf_id): return gjk.unknown("No valid evaluated state")
-	return gjk.query(collider.new(a.geometry.vertices,state[a.leaf_id].world),collider.new(b.geometry.vertices,state[b.leaf_id].world))
+	var ca = collider.new(a.geometry.vertices,state[a.leaf_id].world)
+	var cb = collider.new(b.geometry.vertices,state[b.leaf_id].world)
+	var result: Dictionary = gjk.query(ca,cb)
+	if include_penetration and result.status == "intersecting":
+		result.penetration = preload("res://scripts/core/collision/epa_4d.gd").query(ca,cb,result)
+	return result

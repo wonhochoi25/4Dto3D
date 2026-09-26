@@ -117,3 +117,15 @@ Results are `separated`, `intersecting` (including contact within tolerance), or
 Tolerance is `1e-7 + 1e-6 * max(radius_a + radius_b, 1e-12)`. Near contact is deliberately approximate. Empty/nonfinite input, exhausted iterations without a certificate, or numerical failure can return indeterminate. This implementation provides no broad phase, continuous collision detection, penetration depth, contact manifold, or response.
 
 The sandbox's collapsible collision inspector chooses two objects, displays the result and separating intervals, and applies a temporary edge highlight. Tests cover analytic box/sphere distances, W-only separation, containment, degeneracy, symmetry, common rotations, scale, and inspector integration.
+
+### EPA penetration query
+
+`core/collision/epa_4d.gd` estimates penetration after a GJK `intersecting` result. Call `session.query_collision(a_id, b_id, true)` to add a `penetration` dictionary to that result. The default query remains GJK-only. GJK status is preserved when EPA cannot resolve penetration.
+
+EPA reuses GJK witnesses, samples additional supports to seed a full-dimensional hull, and expands tetrahedral boundary facets through triangular horizons. Facet orientation uses a fixed interior point; expansion is transactional and verifies that each ridge belongs to two facets. The nearest boundary plane and its support plane bound depth. Coplanar tetrahedra are searched for barycentric witness recovery. Arithmetic is normalized by collider radii and uses packed doubles.
+
+Successful results contain `status` (`penetrating` or `touching` within tolerance), depth bounds, unit `direction`, `translation_b`, world-space witnesses `point_a`/`point_b`, tolerance and iteration count. Direction points outward from A−B: adding `translation_b = direction * depth` to B estimates contact with A fixed. It is not a velocity, impulse, force, or contact manifold. At convergence, `point_a - point_b` approximately equals this translation. Nonunique minimum directions can differ between equivalent queries.
+
+Lower-dimensional differences, hull degeneracy, duplicate support without convergence, or iteration/facet budgets return explicit `indeterminate` with no usable translation. The query is bounded at 192 expansion iterations / 4096 facets; smooth or difficult shapes can remain unresolved. Initialization work is additional to the displayed EPA iteration count. This remains experimental floating-point geometry, not a guarantee for every convex input.
+
+The sandbox exposes an opt-in **Estimate penetration (4D EPA)** checkbox. It reports results without modifying simulation state or applying response. Validation includes analytic box depths, containment, contact, common 4D rotations, independent XW rotations against SAT, witness consistency, swapped order, scale, and translating past the estimated contact depth.

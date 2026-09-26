@@ -27,6 +27,12 @@ func verify():
 	b.fields["position.3"].text = "1"
 	scene.apply_card(b)
 	check(inspector.last_result.status == "intersecting", "Live edit refresh")
+	var before: PackedVector3Array = b.object.last_points.duplicate()
+	inspector.penetration_toggle.button_pressed = true
+	check(inspector.last_result.penetration.status == "penetrating", "EPA inspector result")
+	check(absf(inspector.last_result.penetration.depth-1.0)<1e-4,"EPA inspector depth")
+	check(inspector.report.text.contains("Translation for B"),"Explicit B translation label")
+	check(b.object.last_points==before and scene.recording.frames.size()==count,"EPA changes neither pose nor history")
 	inspector.toggle.button_pressed = false
 	check(a.renderer.collision_color.a == 0, "Overlay cleared")
 	scene.remove_card(b)

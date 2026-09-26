@@ -337,3 +337,5 @@ In a procedural tab, add two tesseracts and open **Collision inspector (4D GJK)*
 The inspector operates on convex hulls of world-space 4D vertices. It reports separated, intersecting/within tolerance, or indeterminate, and shows separating intervals when available. It only detects contact; shapes do not bounce or stop.
 
 Run `tests/verify_gjk.gd` and `tests/verify_collision_inspector.gd` with Godot's `--headless --path . --script` options for mathematical and sandbox integration checks.
+
+For overlapping objects, enable **Estimate penetration (4D EPA)** in the collision inspector. EPA reports depth bounds and a 4D translation for B to reach contact while A stays fixed. No motion is applied. With two default tesseracts and B at W=1, expect depth 1 and direction +W. At W=2, expect zero-depth contact. Unresolved or lower-dimensional cases are reported explicitly. Run `tests/verify_epa.gd` for penetration tests.

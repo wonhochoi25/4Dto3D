@@ -6,6 +6,7 @@ var toggle: Button
 var body: VBoxContainer
 var first: OptionButton
 var second: OptionButton
+var penetration_toggle: CheckBox
 var report: Label
 var interval_view
 var last_result: Dictionary = {}
@@ -35,6 +36,11 @@ func _ready():
 		body.add_child(picker)
 		if i == 0: first = picker
 		else: second = picker
+	penetration_toggle = CheckBox.new()
+	penetration_toggle.text = "Estimate penetration (4D EPA)"
+	penetration_toggle.tooltip_text = "Read-only; no objects move. Additional work for overlapping pairs."
+	penetration_toggle.toggled.connect(func(_enabled): update_query())
+	body.add_child(penetration_toggle)
 	report = Label.new()
 	report.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(report)
@@ -67,7 +73,7 @@ func update_query():
 		return
 	var a := first.get_selected_id()
 	var b := second.get_selected_id()
-	last_result = session.query_collision(a,b)
+	last_result = session.query_collision(a,b,penetration_toggle.button_pressed)
 	var result := last_result
 	var color := Color("ffcf83")
 	var title := "Indeterminate"
@@ -87,5 +93,17 @@ func update_query():
 			report.text += "\nA [%.5f, %.5f]   B [%.5f, %.5f]\nGap: %.6f · intervals relative to A center" % [result.intervals[0].x,result.intervals[0].y,result.intervals[1].x,result.intervals[1].y,result.gap]
 			interval_view.show_intervals(result.intervals)
 			interval_view.show()
+	if result.has("penetration"):
+		var p: Dictionary = result.penetration
+		report.text += "\nEPA: %s · %d iterations\n%s" % [p.status,p.iterations,p.reason]
+		if p.converged:
+			report.text += "\nPenetration depth bounds: %.6f – %.6f" % [p.depth_lower,p.depth_upper]
+			var n = p.direction
+			var t = p.translation_b
+			report.text += "\nDirection for B, XYZW: (%.3f, %.3f, %.3f, %.3f)" % [n[0],n[1],n[2],n[3]]
+			report.text += "\nTranslation for B: (%.6f, %.6f, %.6f, %.6f)" % [t[0],t[1],t[2],t[3]]
+			report.text += "\nEstimated translation to contact with A fixed. No movement applied."
+		else:
+			report.text += "\nGJK contact result remains valid; penetration estimate unresolved."
 	report.tooltip_text = "Cyan interval: A. Purple interval: B. These are 1D projections along a 4D separating axis."
 	highlighted.emit([a,b] if a != b else [],color)
