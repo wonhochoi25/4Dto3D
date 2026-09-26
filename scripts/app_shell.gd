@@ -8,32 +8,67 @@ var active := -1
 var serial := 0
 var tabs: HBoxContainer
 var content: Control
+var add_tab_button: Button
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 0)
 	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(layout)
+	var strip := PanelContainer.new()
+	var background := StyleBoxFlat.new()
+	background.bg_color = Color("101722")
+	background.content_margin_left = 12
+	background.content_margin_top = 8
+	background.content_margin_bottom = 4
+	strip.add_theme_stylebox_override("panel", background)
+	layout.add_child(strip)
 	var bar := HBoxContainer.new()
-	layout.add_child(bar)
+	strip.add_child(bar)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	bar.add_child(scroll)
 	tabs = HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 6)
 	scroll.add_child(tabs)
 	var add := Button.new()
+	add_tab_button = add
 	add.text = "+"
 	add.tooltip_text = "New procedural experiment"
 	add.custom_minimum_size = Vector2(44, 38)
 	add.pressed.connect(new_procedural)
-	bar.add_child(add)
+	style_tab_button(add)
+	add.add_theme_font_size_override("font_size", 24)
+	tabs.add_child(add)
 	content = Control.new()
 	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	layout.add_child(content)
 	content.resized.connect(sync_tab_resolution)
 	get_viewport().size_changed.connect(sync_tab_resolution)
 	add_page(Playground.instantiate(), "Playground", false)
+
+## Visible tab surfaces distinguish the active workspace from inactive tabs.
+func style_tab_button(button: Button) -> void:
+	for state in ["normal", "hover", "pressed", "hover_pressed"]:
+		var selected: bool = state in ["pressed", "hover_pressed"]
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color("304b65") if selected else Color("202c3c")
+		if state == "hover": style.bg_color = Color("2b3b50")
+		style.border_color = Color("79c8ef") if selected else Color("465a72")
+		style.set_border_width_all(1)
+		style.border_width_bottom = 3 if selected else 1
+		style.corner_radius_top_left = 9
+		style.corner_radius_top_right = 9
+		style.content_margin_left = 14
+		style.content_margin_right = 14
+		style.content_margin_top = 8
+		style.content_margin_bottom = 8
+		button.add_theme_stylebox_override(state, style)
+	button.add_theme_color_override("font_color", Color("c3cedd"))
+	button.add_theme_color_override("font_pressed_color", Color.WHITE)
+	button.add_theme_font_size_override("font_size", 16)
 
 func new_procedural() -> void:
 	serial += 1
@@ -53,9 +88,13 @@ func add_page(scene: Node, title: String, closable: bool) -> void:
 	configure_tab_resolution(host, viewport)
 	viewport.add_child(scene)
 	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 0)
 	tabs.add_child(header)
+	tabs.move_child(header, add_tab_button.get_index())
 	var button := Button.new()
 	button.text = title
+	button.custom_minimum_size = Vector2(160, 42)
+	style_tab_button(button)
 	button.toggle_mode = true
 	button.focus_mode = Control.FOCUS_NONE
 	header.add_child(button)
@@ -65,6 +104,8 @@ func add_page(scene: Node, title: String, closable: bool) -> void:
 	if closable:
 		var close := Button.new()
 		close.text = "×"
+		close.custom_minimum_size = Vector2(32, 42)
+		style_tab_button(close)
 		close.tooltip_text = "Close " + title
 		close.focus_mode = Control.FOCUS_NONE
 		header.add_child(close)
