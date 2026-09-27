@@ -343,3 +343,11 @@ For overlapping objects, enable **Estimate penetration** in the collision inspec
 ### Swapping collision algorithms
 
 Collision checks use a **general, replaceable backend** at `scripts/core/collision/collision_backend.gd`. Replace that entry with another implementation of the same query signature and documented result structure; the session and inspector continue to run. The default adapter uses GJK/EPA, but detection-only or other collision algorithms can omit unsupported measurements. See [the collision backend contract](docs/COLLISION_BACKEND.md) for exact inputs, required/optional outputs, replacement instructions, and the replacement test. Geometry transforms, playback, and rendering do not depend on the chosen algorithm.
+
+### Export a selected procedural shape
+
+Playground and Procedural 1 open on startup, with Playground selected. Playground remains unclosable; procedural tabs can be closed and the **+** button creates more.
+
+In a procedural tab, select a shape and click **Export shape…** beneath its Parent selector. Apply pending Geometry and Group expression edits first. The save dialog starts in `data/custom_shapes`; choose a new `.json` filename. Restart the app to refresh shape selectors, then select the exported shape like any other custom shape. Files saved elsewhere can be copied into `data/custom_shapes` before restart. No separate import feature is needed.
+
+Export uses the same schema as `hi_4d.json`: name, local vertices/edges/faces, geometry position/rotation/scale/anchor expressions, the 3×4 projection expressions, and the selected shape's own group position/rotation/uniform-scale/anchor expressions. Applied expressions are saved as expressions, not evaluated at the current time. Only that shape is exported: no parent/children, inherited transforms, or fixed reparenting offsets. It loads under World and can therefore have a different world pose. This is a custom-shape asset, not a scene save: appearance, camera, timeline/history, and editor preferences such as the anchor-compensation checkbox are not part of this existing format.

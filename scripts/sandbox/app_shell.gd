@@ -48,6 +48,8 @@ func _ready() -> void:
 	content.resized.connect(sync_tab_resolution)
 	get_viewport().size_changed.connect(sync_tab_resolution)
 	add_page(Playground.instantiate(), "Playground", false)
+	new_procedural()
+	activate(0)
 
 ## Visible tab surfaces distinguish the active workspace from inactive tabs.
 func style_tab_button(button: Button) -> void:

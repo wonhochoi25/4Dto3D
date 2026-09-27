@@ -386,6 +386,11 @@ func build_node_actions(card, contents: VBoxContainer) -> void:
 	parent_picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	parent_picker.item_selected.connect(func(index: int): reparent_node(id, parent_picker.get_item_id(index)))
 	actions.add_child(parent_picker)
+	var export_button := Button.new()
+	export_button.text = "Export shape…"
+	export_button.tooltip_text = "Save applied geometry/group expressions and projection as custom-shape JSON. No parent or children."
+	export_button.pressed.connect(func(): export_shape(card))
+	contents.add_child(export_button)
 
 func reparent_node(id: int, parent: int) -> bool:
 	timeline.pause()
@@ -439,3 +444,32 @@ func fit_sidebar() -> void:
 	var available := maxf(100.0, get_viewport().get_visible_rect().size.y - 218.0)
 	sidebar_scroll.custom_minimum_size.y = minf(sidebar_box.get_combined_minimum_size().y, available)
 	panel.size.y = panel.get_combined_minimum_size().y
+
+## Snapshot only applied fields. The save dialog cannot accidentally switch export targets.
+func export_shape(card) -> void:
+	var id: int = card.get_meta("group_id")
+	var group_card = pairs[id].group_card
+	for editor in [card,group_card]:
+		for key in editor.fields:
+			if editor.fields[key].text != str(editor.object.sources[key]):
+				show_tree_error("Apply pending Geometry and Group expressions before exporting.")
+				return
+	var exporter = preload("res://scripts/io/shape_json_exporter.gd")
+	var data: Dictionary = exporter.serialize_shape(card.object.shape,card.object.node_name,
+		card.object.track.sources,group_card.object.track.sources,card.object.projection_track.sources)
+	var dialog := FileDialog.new()
+	dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	dialog.access = FileDialog.ACCESS_FILESYSTEM
+	dialog.use_native_dialog = true
+	dialog.title = "Export selected shape — applied fields only"
+	dialog.filters = PackedStringArray(["*.json ; Custom 4D shape"])
+	dialog.current_dir = ProjectSettings.globalize_path(Registry.CUSTOM_DIRECTORY)
+	dialog.current_file = card.object.node_name.validate_filename()+".json"
+	add_child(dialog)
+	dialog.file_selected.connect(func(path: String):
+		if path.get_extension().to_lower() != "json": path += ".json"
+		var error: Error = exporter.save(path,data)
+		show_tree_error("Exported to %s. Restart to refresh the custom-shape selectors." % path if error == OK else "Export failed: "+error_string(error))
+		dialog.queue_free())
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.popup_centered_ratio(0.7)

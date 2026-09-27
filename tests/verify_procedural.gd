@@ -34,10 +34,10 @@ func verify() -> void:
 	var app = load("res://scenes/app.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
-	check(app.pages.size() == 1 and app.active == 0, "Default playground")
+	check(app.pages.size() == 2 and app.active == 0, "Default playground and procedural")
 	app.close_page(0)
-	check(app.pages.size() == 1, "Unclosable playground")
-	app.new_procedural()
+	check(app.pages.size() == 2, "Unclosable playground")
+	app.activate(1)
 	await process_frame
 	var scene = app.pages[1]["scene"]
 	var first = scene.add_shape(0)
