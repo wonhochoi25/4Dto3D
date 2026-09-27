@@ -7,6 +7,8 @@ const Card = preload("res://scripts/sandbox/procedural/object_card.gd")
 const Timeline = preload("res://scripts/sandbox/procedural/timeline.gd")
 const Registry = preload("res://scripts/io/shape_catalog.gd")
 var numeric_mode := false
+# Solid rendering is independent of whether the editor accepts expressions.
+var allow_physics_expressions := false
 var cards: Array = []
 var list: VBoxContainer
 var timeline := Timeline.new()
@@ -133,7 +135,7 @@ func _ready() -> void:
 	bottom.offset_top = -166
 	bottom.offset_bottom = -12
 	bottom.add_child(timeline)
-	if numeric_mode:
+	if numeric_mode and not allow_physics_expressions:
 		bottom.hide()
 		timeline.process_mode = Node.PROCESS_MODE_DISABLED
 	timeline.time_requested.connect(request_time)
@@ -166,7 +168,8 @@ func add_shape(index: int):
 	if not group_model.initialize_defaults(model.defaults.get("group", {}), timeline.time):
 		show_tree_error("Group " + group_model.error_field + ": " + group_model.error)
 		return null
-	if numeric_mode:
+	prepare_starting_models(model,group_model)
+	if numeric_mode and not allow_physics_expressions:
 		freeze_model(model)
 		freeze_model(group_model)
 		var exporter = preload("res://scripts/io/shape_json_exporter.gd")
@@ -198,7 +201,9 @@ func add_shape(index: int):
 
 func create_card(model, renderer, id: int, editor: TabContainer):
 	var card := Card.new()
-	card.numeric_mode = numeric_mode
+	card.numeric_mode = numeric_mode and not allow_physics_expressions
+	card.solid_mode = numeric_mode
+	card.compact_physics = numeric_mode and allow_physics_expressions
 	editor.add_child(card)
 	card.setup(model, renderer)
 	card.set_meta("node_id", id)
@@ -232,7 +237,7 @@ func remove_card(card) -> void:
 	display_time(timeline.time)
 
 func apply_card(card) -> void:
-	if numeric_mode:
+	if numeric_mode and not allow_physics_expressions:
 		for key in card.fields:
 			var value: String = card.fields[key].text.strip_edges()
 			if not value.is_valid_float() or not is_finite(value.to_float()):
@@ -247,7 +252,7 @@ func apply_card(card) -> void:
 		card.show_error(card.object.track.error_field, session.error)
 		return
 	card.object.projection_track = trial
-	if numeric_mode:
+	if numeric_mode and not allow_physics_expressions:
 		freeze_model(card.object)
 		session.invalidate()
 	card.clear_errors()
@@ -472,7 +477,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Hug the visible content, scrolling only when it exceeds the available height.
 func fit_sidebar() -> void:
 	if not is_inside_tree() or not is_instance_valid(sidebar_box): return
-	var available := maxf(100.0, get_viewport().get_visible_rect().size.y - (40.0 if numeric_mode else 218.0))
+	var available := maxf(100.0, get_viewport().get_visible_rect().size.y - (40.0 if numeric_mode and not allow_physics_expressions else 218.0))
 	sidebar_scroll.custom_minimum_size.y = minf(sidebar_box.get_combined_minimum_size().y, available)
 	panel.size.y = panel.get_combined_minimum_size().y
 
@@ -516,3 +521,6 @@ func freeze_model(model) -> void:
 	var projection := {}
 	for key in model.projection_track.compiled: projection[key] = str(model.projection_track.compiled[key].evaluate(0.0))
 	model.projection_track.apply_sources(projection,0.0)
+
+func prepare_starting_models(_model, _group_model) -> void:
+	pass

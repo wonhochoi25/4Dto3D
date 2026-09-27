@@ -11,6 +11,8 @@ const Binding = preload("res://scripts/core/scene/physics_binding_4d.gd")
 var physics_binding := Binding.new()
 var validated_state: Variant = null
 var validated_time := NAN
+const InitialMotion = preload("res://scripts/core/animation/initial_motion_4d.gd")
+var initial_motion_tracks: Dictionary = {}
 var scene := Scene.new()
 var physics := Physics.new()
 var recording := Recording.new(physics)
@@ -73,6 +75,7 @@ func remove_object(id: int) -> bool:
 	if not scene.remove_object(id, playback.time):
 		error = scene.error
 		return false
+	initial_motion_tracks.erase(id)
 	physics.remove_body(id)
 	invalidate()
 	scene_changed.emit()
@@ -85,18 +88,22 @@ func replace_geometry(id: int, geometry) -> void:
 ## Dynamic motion is local to the object's group parent frame. Geometry track remains usable.
 func make_dynamic(id: int, position: Vector4, velocity: Vector4) -> void:
 	assert(scene.objects.has(id))
+	initial_motion_tracks.erase(id)
 	physics.add_body(id, position, velocity)
 	invalidate()
 
 func make_procedural(id: int) -> void:
+	initial_motion_tracks.erase(id)
 	physics.remove_body(id)
 	invalidate()
 
-func sync_dynamic() -> void:
-	physics_binding.sync(scene,physics,playback.start)
+func sync_dynamic() -> bool:
+	return physics_binding.sync(scene,physics,playback.start)
 
 func validate_step(time: float) -> bool:
-	sync_dynamic()
+	if not sync_dynamic():
+		error = scene.error
+		return false
 	var evaluated = scene.sample(time)
 	validated_state = evaluated
 	validated_time = time
@@ -104,6 +111,9 @@ func validate_step(time: float) -> bool:
 	return evaluated != null
 
 func invalidate() -> void:
+	if not refresh_initial_motion(playback.start):
+		playback.pause()
+		return
 	physics_binding.invalidate()
 	pending_seek = null
 	playback.busy = false
@@ -114,7 +124,10 @@ func invalidate() -> void:
 
 func seek(time: float, budget: int = 2147483647) -> bool:
 	if not is_finite(time): return false
-	error = ""
+	error = Binding.run_error(scene,physics) if time > playback.start else ""
+	if not error.is_empty():
+		playback.pause()
+		return false
 	validated_state = null
 	validated_time = NAN
 	if not recording.seek(time, validate_step, budget):
@@ -155,6 +168,7 @@ func advance(delta: float) -> void:
 
 func set_range(from: float, to: float) -> bool:
 	if not is_finite(from) or not is_finite(to) or from >= to: return false
+	if not refresh_initial_motion(from,false): return false
 	var reset_needed := from != playback.start
 	playback.pause()
 	playback.start = from
@@ -207,6 +221,7 @@ func configure_body(id: int, body_type: String, initial_velocity: Vector4, motio
 	if not Binding.configure(scene,physics,id,body_type,initial_velocity,motion):
 		error = Binding.configuration_error(scene,physics,id)
 		return false
+	initial_motion_tracks.erase(id)
 	error = ""
 	invalidate()
 	return true
@@ -216,4 +231,38 @@ func start_body_motion() -> bool:
 	if not error.is_empty(): return false
 	if playback.time >= playback.end: invalidate()
 	play(1)
+	return true
+
+## Reuse scene tracks as a kinematic pose driver; rates are not additionally applied.
+func configure_kinematic(id: int) -> bool:
+	return configure_body(id,"kinematic",Vector4.ZERO,{"source":"tracks"})
+
+## Transform tracks supply the initial pose; these expressions supply initial rates.
+## Physics owns mutable state afterward, including stored acceleration.
+func configure_dynamic_initial(id: int, expressions: Dictionary) -> bool:
+	var track := InitialMotion.new()
+	if not track.configure(expressions,playback.start):
+		error=track.error
+		return false
+	var values: Dictionary=track.sample(playback.start)
+	if not Binding.configure(scene,physics,id,"dynamic",values.velocity,values):
+		error=Binding.configuration_error(scene,physics,id)
+		return false
+	initial_motion_tracks[id]=track
+	invalidate()
+	return true
+
+## Evaluate every body before committing, so invalid start-time edits are atomic.
+func refresh_initial_motion(time: float, commit: bool = true) -> bool:
+	var evaluated := {}
+	for id in initial_motion_tracks:
+		var values = initial_motion_tracks[id].sample(time)
+		if values==null:
+			error="Body %d: %s" % [id,initial_motion_tracks[id].error]
+			return false
+		evaluated[id]=values
+	if commit:
+		for id in evaluated:
+			var values: Dictionary=evaluated[id]
+			physics.configure_body(id,"dynamic",values.velocity,values)
 	return true

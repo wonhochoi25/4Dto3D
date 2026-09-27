@@ -33,6 +33,8 @@ func restore(state: Dictionary) -> void:
 
 func step(dt: float) -> void:
 	for id in bodies:
+		# External pose drivers are sampled by the host scene adapter, never integrated twice.
+		if motion_settings.get(id,{}).get("source", "rates") == "tracks": continue
 		bodies[id] = Integrator.step_state(bodies[id],initial_bodies[id],body_types.get(id,"dynamic"),dt)
 
 func remove_body(id: int) -> void:
@@ -46,6 +48,10 @@ func remove_body(id: int) -> void:
 ## Angular quantities are degrees/s and degrees/s² in fixed world planes.
 func configure_body(id: int, body_type: String, velocity: Vector4, motion: Dictionary = {}) -> bool:
 	error = ""
+	var source = motion.get("source","rates")
+	if source not in ["rates","tracks"] or (source == "tracks" and body_type != "kinematic"):
+		error = "Track-driven motion requires a kinematic body"
+		return false
 	var acceleration = motion.get("acceleration",Vector4.ZERO)
 	var angular = motion.get("angular_velocity",PackedFloat64Array([0,0,0,0,0,0]))
 	var alpha = motion.get("angular_acceleration",PackedFloat64Array([0,0,0,0,0,0]))
@@ -64,7 +70,7 @@ func configure_body(id: int, body_type: String, velocity: Vector4, motion: Dicti
 			state[34+plane]=alpha[plane]
 	initial_bodies[id]=state
 	bodies[id]=state.duplicate()
-	motion_settings[id] = {"type":body_type,"velocity":velocity,"acceleration":acceleration,
+	motion_settings[id] = {"type":body_type,"source":source,"velocity":velocity,"acceleration":acceleration,
 		"angular_velocity":PackedFloat64Array(angular),"angular_acceleration":PackedFloat64Array(alpha)}
 	return true
 

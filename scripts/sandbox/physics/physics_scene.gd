@@ -4,6 +4,7 @@ var motion_label: Label
 var body_editors := {}
 func _init() -> void:
 	numeric_mode = true
+	allow_physics_expressions = true
 
 func _ready() -> void:
 	super._ready()
@@ -23,7 +24,7 @@ func _ready() -> void:
 	sidebar_box.add_child(motion_label)
 	sidebar_box.move_child(motion_label,3)
 	var help: Label = sidebar_box.get_child(1)
-	help.text="Static stays fixed · Kinematic follows prescribed motion.\nWorld axes/planes · Constant accelerations. No collision response.\nWorld-parented bodies only. Edits restart the 60-second run."
+	help.text="Static inherits parent transforms · Dynamic integrates motion.\nNumeric starting transforms and motion. Only projection accepts t.\nEdits restart the run. Dynamic/rate bodies must be under World."
 
 func add_shape(index: int):
 	if session.playback.direction!=0 or session.pending_seek!=null:
@@ -32,13 +33,13 @@ func add_shape(index: int):
 	var card = super.add_shape(index)
 	if card != null:
 		var id: int = card.get_meta("group_id")
-		session.configure_body(id,"static",Vector4.ZERO)
+		session.configure_body(id,"kinematic",Vector4.ZERO)
 	return card
 
 func build_node_actions(card, contents: VBoxContainer) -> void:
 	super.build_node_actions(card,contents)
 	var id: int = card.get_meta("group_id")
-	var config: Dictionary = session.motion_settings.get(id,{"type":"static","velocity":Vector4.ZERO})
+	var config: Dictionary = session.motion_settings.get(id,{"type":"kinematic","source":"rates","velocity":Vector4.ZERO})
 	var panel := VBoxContainer.new()
 	contents.add_child(panel)
 	var title := Label.new()
@@ -51,24 +52,25 @@ func build_node_actions(card, contents: VBoxContainer) -> void:
 	var fields := []
 	var values := motion_values(config)
 	var groups := [
-		["Linear velocity · units/s",["X","Y","Z","W"]],
-		["Linear acceleration · units/s²",["X","Y","Z","W"]],
-		["Angular velocity · degrees/s",["XY","XZ","XW","YZ","YW","ZW"]],
-		["Angular acceleration · degrees/s²",["XY","XZ","XW","YZ","YW","ZW"]]]
+		["Initial linear velocity · units/s",["X","Y","Z","W"]],
+		["Initial stored acceleration · units/s²",["X","Y","Z","W"]],
+		["Initial angular velocity · degrees/s",["XY","XZ","XW","YZ","YW","ZW"]],
+		["Initial stored angular acceleration · degrees/s²",["XY","XZ","XW","YZ","YW","ZW"]]]
 	for group in groups:
 		var heading := Label.new()
 		heading.text=group[0]
 		panel.add_child(heading)
 		var grid := GridContainer.new()
-		grid.columns=4 # Two label/value pairs per row, including the six-plane fields.
+		grid.columns=group[1].size()
 		panel.add_child(grid)
 		for component in group[1]:
 			var label := Label.new()
 			label.text=component
 			grid.add_child(label)
+		for component in group[1]:
 			var field := LineEdit.new()
 			field.text=str(values[fields.size()])
-			field.custom_minimum_size.x=100
+			field.custom_minimum_size.x=50
 			field.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			grid.add_child(field)
 			fields.append(field)
@@ -84,6 +86,11 @@ func build_node_actions(card, contents: VBoxContainer) -> void:
 
 func apply_body(id: int, picker: OptionButton, fields: Array) -> void:
 	if not can_edit(): return
+	if picker.selected==0:
+		session.configure_body(id,"static",Vector4.ZERO)
+		for field in fields: field.text="0"
+		tree_message.hide()
+		return
 	var values := PackedFloat64Array()
 	for field in fields:
 		var text: String=field.text.strip_edges()
@@ -115,7 +122,14 @@ func can_edit() -> bool:
 	return true
 
 func apply_card(card) -> void:
-	if can_edit(): super.apply_card(card)
+	if not can_edit(): return
+	for key in card.fields:
+		if key.begins_with("projection."): continue
+		var text: String=card.fields[key].text.strip_edges()
+		if not text.is_valid_float() or not is_finite(text.to_float()):
+			card.show_error(key,"Starting transforms require finite numbers. Only projection accepts t.")
+			return
+	super.apply_card(card)
 
 func reparent_node(id: int,parent: int) -> bool:
 	if not can_edit(): return false
@@ -157,5 +171,27 @@ func reset_motion() -> void:
 func _process(delta: float) -> void:
 	session.advance(delta)
 	if is_instance_valid(motion_label):
-		motion_label.text="%s · t = %.3f / 60 s" % ["Running" if session.playback.direction!=0 else "Paused",session.playback.time]
+		motion_label.text="%s · t = %.3f s" % ["Running" if session.playback.direction!=0 else "Paused",session.playback.time]
 	if not session.error.is_empty(): show_tree_error(session.error)
+
+## Freeze imported PRSA once at run start, then remove anchors without changing M.
+## P R S T(-a) = T(p - R S a) R S: matrix translation gives compensated position.
+func prepare_starting_models(model, group_model) -> void:
+	for item in [model,group_model]:
+		var sample = item.track.sample(session.playback.start)
+		var values := {}
+		for key in item.track.compiled:
+			values[key]=str(item.track.compiled[key].evaluate(session.playback.start))
+		for axis in range(4):
+			values["position.%d" % axis]=str(sample.matrix[axis*5+4])
+			values["anchor.%d" % axis]="0"
+		item.keep_anchor_in_place=false
+		item.track.apply_sources(values,session.playback.start)
+	var exporter = preload("res://scripts/io/shape_json_exporter.gd")
+	var geometry: Dictionary=exporter.transform_fields(model.track.sources,false)
+	geometry.projection=[]
+	for row in range(3):
+		var values := []
+		for col in range(4): values.append(model.projection_track.sources["projection.%d" % (row*4+col)])
+		geometry.projection.append(values)
+	model.defaults={"geometry":geometry,"group":exporter.transform_fields(group_model.track.sources,true)}

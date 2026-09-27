@@ -108,3 +108,100 @@ passes settings through Session to the physics module.
 Verification: `tests/verify_acceleration.gd` checks all planes, accelerated rates,
 static/kinematic/dynamic behavior, snapshot independence, invalid input, world-plane
 composition, reset/replay, and UI field application/draft checks.
+
+### Procedural kinematic integration
+
+The UI-independent Session API now provides `configure_kinematic(id)`. It selects
+`configure_body(id, "kinematic", Vector4.ZERO, {"source":"tracks"})`: both geometry
+and group tracks are sampled at each fixed simulation time through the ordinary
+scene graph. Parenting, scale, anchor compensation and rotation expressions use the
+same evaluator as a procedural scene. There is no second integrator for this mode.
+The standalone physics world treats these as externally driven bodies; the scene
+adapter supplies their authoritative world geometry. Use Session's evaluated state,
+`world_vertices` and `query_collision` for these bodies, not the world's motion-offset
+matrices. Surface velocity/contact response for animated kinematic bodies is future work.
+
+Existing `configure_body` calls retain `source: "rates"` by default. This supports the
+previous prescribed velocity/acceleration mode without silently changing game callers.
+Dynamic bodies use rates; static bodies hold their starting local pose and inherit
+parent transforms, including animated parents. Both freeze their geometry track at the run's starting time.
+Expressions are preserved in the tracks so changing back to kinematic restores them.
+Track-driven kinematic bodies may be parented. Dynamic and rate-driven bodies still
+require World as parent when advancing; this is enforced in core seek as well as Run.
+
+Recording stores integrated state as before; procedural targets are reconstructed
+purely from time and unchanged tracks on replay. Track/configuration edits invalidate
+history. Invalid targets stop seeking and restore the prior displayed frame.
+
+`core/animation/projection_track_4d.gd` evaluates animated projections independently
+of all body types. It has no UI/rendering dependencies. The old rendering path is a
+compatibility wrapper. Projection never affects collision geometry or body motion.
+
+The Physics sandbox uses numeric starting transforms and numeric motion settings.
+New shapes default to kinematic rates. It exposes the shared timeline; projection
+expressions remain active for every body type. Opaque hull
+rendering remains a separate display choice, so it can differ visually from the
+Procedural tab's transparent faces even when projected vertices match exactly.
+
+`tests/verify_kinematic_tracks.gd` loads teleport data into core types and checks exact
+4D/projected agreement with a procedural reference, mixed dynamic motion, hierarchy,
+static/dynamic pose ownership, replay, and invalid-expression recovery.
+
+
+### Dynamic initial expressions and static inheritance
+
+`Session.configure_dynamic_initial(id, expressions)` accepts flat expression keys:
+`velocity.0`–`.3`, `acceleration.0`–`.3`, `angular_velocity.0`–`.5`, and
+`angular_acceleration.0`–`.5`. Missing fields default to zero. For example:
+
+```gdscript
+session.configure_dynamic_initial(id, {
+    "velocity.3": "5*cos(t)",
+    "acceleration.3": "-5*sin(t)",
+    "angular_velocity.2": "30"
+})
+```
+
+`t` is the playback range's start time. The core's `initial_motion_4d.gd` compiles
+and evaluates these expressions, and Session passes numeric initial conditions to
+physics. Geometry/group expressions already supply the starting pose. No automatic
+derivatives of transform expressions are taken. Angular order remains XY, XZ, XW,
+YZ, YW, ZW in degrees/s (or degrees/s² for acceleration).
+
+During stepping, velocities and stored accelerations are mutable physics state;
+the initializer is not sampled again. This permits future collision/force code to
+change state without a procedural trajectory overwriting it. Acceleration expressions
+are initial stored values, not ongoing forcing functions. Reset re-evaluates initial
+conditions; changing the start time re-evaluates them at that time. Invalid expression
+edits and invalid start-time changes are rejected before changing body configuration.
+Switching body modes or removing a body removes its initial-expression driver.
+Recorded replay restores snapshots and does not reinitialize bodies.
+
+Static bodies freeze their own group/geometry tracks locally but use normal parent
+composition. Parent translation, rotation and scale affect their world geometry.
+Static means no physics integration, not a world-space transform lock. The temporary
+world-override implementation has been removed. Collision response/surface velocity
+for parent-driven static motion is not added by this change; use kinematic bodies
+for intentionally prescribed moving obstacles.
+
+Initial-expression APIs remain available to engine callers and are not exposed by
+the numeric Physics sandbox. Run detects uncommitted numeric motion edits. `verify_initial_conditions.gd` covers initialization
+at nonzero times, reset/replay, simulated-state mutations, invalid input, parent
+translation/rotation/scale, unparenting and UI application.
+
+
+### Compact numeric Physics editor
+
+Physics presents position/scale as four-component rows and rotation as a six-plane
+row (degrees). Group scale stays uniform. Initial linear/angular velocities and
+stored accelerations are compact numeric rows. Only the collapsible 3×4 projection
+matrix accepts expressions in t. Anchor controls and kinematic source selection are
+removed from this sandbox. The Procedural editor and core animation APIs are intact.
+
+At import, geometry/group PRSA expressions are sampled at the playback range start.
+Each anchor is removed by replacing position with the sampled matrix's translation:
+`p_new = p - R*S*a`. This preserves the starting local matrix, including nonuniform
+scale, without carrying transform animation into Physics. Projection expressions
+remain unchanged. Imported JSON files themselves are never modified. These controls
+are starting settings; Apply resets the run. Motion thereafter comes from rates and
+stored acceleration (and future interactions), with normal parent inheritance.

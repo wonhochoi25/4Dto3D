@@ -9,20 +9,34 @@ var starting_frames: Dictionary = {}
 func invalidate() -> void:
 	starting_frames.clear()
 
-func sync(scene, physics, start_time: float) -> void:
+## Track-driven kinematic bodies use the ordinary graph at t. Other configured
+## bodies freeze geometry at the start; dynamics/rate drivers own the group pose.
+func sync(scene, physics, start_time: float) -> bool:
+	scene.dynamic_matrices.clear()
+	if starting_frames.is_empty() and not physics.motion_settings.is_empty():
+		var initial = scene.sample(start_time)
+		if initial == null: return false
+		for id in physics.motion_settings:
+			var object: Dictionary = scene.objects[id]
+			var group = object.group.sample(start_time)
+			var leaf = object.track.sample(start_time)
+			var offset: PackedFloat64Array = scene.entries[id].offset
+			starting_frames[id] = {"inverse":Graph.inverse(offset),
+				"initial":Math4D.multiply(offset,group.matrix),
+				"group":group.matrix,"leaf":leaf.matrix}
 	physics.write_matrices(scene.dynamic_matrices)
 	for id in physics.motion_settings:
-		if not scene.dynamic_matrices.has(id): continue
-		if not starting_frames.has(id):
-			var offset: PackedFloat64Array = scene.entries[id].offset
-			var inverse := Graph.inverse(offset)
-			var initial = scene.objects[id].group.sample(start_time)
-			if inverse.is_empty() or initial == null:
-				scene.dynamic_matrices.erase(id)
-				continue
-			starting_frames[id] = {"inverse":inverse, "initial":Math4D.multiply(offset,initial.matrix)}
+		var config: Dictionary = physics.motion_settings[id]
+		if config.get("source","rates") == "tracks":
+			scene.dynamic_matrices.erase(id)
+			continue
 		var frame: Dictionary = starting_frames[id]
-		scene.dynamic_matrices[id] = Math4D.multiply(Math4D.multiply(frame.inverse,scene.dynamic_matrices[id]),frame.initial)
+		scene.dynamic_matrices[scene.objects[id].leaf_id] = frame.leaf
+		if config.type == "static":
+			scene.dynamic_matrices[id] = frame.group
+		else:
+			scene.dynamic_matrices[id] = Math4D.multiply(Math4D.multiply(frame.inverse,scene.dynamic_matrices[id]),frame.initial)
+	return true
 
 static func configuration_error(scene, physics, id: int) -> String:
 	if not scene.objects.has(id): return "Unknown object ID"
@@ -30,11 +44,12 @@ static func configuration_error(scene, physics, id: int) -> String:
 	return physics.error
 
 static func configure(scene, physics, id: int, body_type: String, velocity: Vector4, motion: Dictionary = {}) -> bool:
-	if not scene.objects.has(id) or Graph.inverse(scene.entries[id].offset).is_empty(): return false
+	if not scene.objects.has(id): return false
+	if motion.get("source","rates") != "tracks" and body_type != "static" and Graph.inverse(scene.entries[id].offset).is_empty(): return false
 	return physics.configure_body(id,body_type,velocity,motion)
 
 static func run_error(scene, physics) -> String:
 	for id in physics.motion_settings:
-		if scene.entries[id].parent!=0:
-			return "For this first motion version, put Physics shapes directly under World before running."
+		if scene.entries[id].parent!=0 and physics.motion_settings[id].type != "static" and physics.motion_settings[id].get("source","rates") != "tracks":
+			return "Dynamic and rate-driven bodies must be directly under World. Track-driven kinematic bodies may be parented."
 	return ""

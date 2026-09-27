@@ -25,11 +25,11 @@ func verify():
 	var scene = preload("res://scripts/sandbox/physics/physics_scene.gd").new()
 	root.add_child(scene)
 	var card = scene.add_shape(0)
-	check(scene.numeric_mode and scene.timeline.process_mode==Node.PROCESS_MODE_DISABLED,"No timeline playback")
+	check(scene.numeric_mode and scene.timeline.process_mode!=Node.PROCESS_MODE_DISABLED,"Physics timeline available")
 	check(card.renderer.hull.dimension==3 and card.renderer.face_material.transparency==BaseMaterial3D.TRANSPARENCY_DISABLED,"Opaque solid")
 	card.fields["position.0"].text="t"
 	scene.apply_card(card)
-	check(card.message.text.contains("finite number"),"Expressions rejected")
+	check(card.message.text.contains("finite numbers"),"Transform expressions rejected")
 	card.fields["position.0"].text="2"
 	scene.apply_card(card)
 	check(card.object.track.sources["position.0"].to_float()==2,"Numeric apply")
@@ -55,13 +55,11 @@ func verify():
 	for i in range(registry.ENTRIES.size()):
 		if registry.ENTRIES[i].get("path","").ends_with("hi_4d.json"):
 			var custom = scene.add_shape(i)
-			check(custom!=null,"Custom animation loads as static pose")
+			check(custom!=null,"Custom animation loads with tracks")
 			if custom != null:
-				for value in custom.object.sources.values(): check(str(value).is_valid_float(),"Custom fields frozen to numbers")
+				check(scene.session.motion_settings[custom.get_meta("group_id")].source=="rates","Custom uses numeric rates")
 	var group = scene.pairs[card.get_meta("group_id")].group_card
-	group.fields["anchor.0"].text="1"
-	scene.apply_card(group)
-	for value in group.object.track.sources.values(): check(str(value).is_valid_float(),"Anchor compensation stays numeric")
+	check(not group.fields.has("anchor.0"),"Anchor controls removed")
 	scene.queue_free()
 	await process_frame
 	print("Physics view failures: ",failures)

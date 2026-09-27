@@ -195,3 +195,17 @@ transforms for display. Physics owns integration, recording owns snapshots, and 
 scene binding owns cached conversion between body motion and group transforms.
 See [PHYSICS.md](PHYSICS.md#update-and-state-ownership) for cache invalidation and
 snapshot ownership requirements.
+
+Kinematic track integration uses `Session.configure_kinematic(id)`: existing core
+tracks supply geometry/group poses, while the physics integrator advances only bodies
+using rates. The scene-side binding owns this choice and freezes starting geometry
+for static/dynamic bodies. UI code never samples or integrates physics itself.
+Animated projection is available independently from
+`core/animation/projection_track_4d.gd`; the rendering-path script is a legacy alias.
+See PHYSICS.md for the public API, hierarchy limits and replay ownership.
+
+Dynamic initial conditions are evaluated by `core/animation/initial_motion_4d.gd`
+through Session at reset/start. The physics module remains numeric and independent
+of animation. Initial expressions do not run during integration or recorded replay.
+Static bodies retain normal hierarchy inheritance; their frozen local transforms
+are composed through the same graph as other objects.

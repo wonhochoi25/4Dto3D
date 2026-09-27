@@ -1,0 +1,81 @@
+extends SceneTree
+const Session = preload("res://scripts/core/session_4d.gd")
+const Geometry = preload("res://scripts/core/geometry/geometry_4d.gd")
+const ProjectionTrack = preload("res://scripts/core/animation/projection_track_4d.gd")
+const Box = preload("res://scripts/core/geometry/generators/tesseract.gd")
+var failures := 0
+func check(ok: bool, label: String):
+	if not ok: failures+=1; push_error(label)
+func _initialize(): call_deferred("verify")
+func verify():
+	# Load data here only: the engine consumes geometry/settings, never files or UI.
+	var data: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://data/custom_shapes/teleport.json"))
+	var shape := Geometry.new()
+	for p in data.vertices: shape.vertices.append(Vector4(p[0],p[1],p[2],p[3]))
+	var settings: Dictionary=data.procedural_defaults
+	var reference := Session.new()
+	var expected_id := reference.add_geometry(shape,settings.geometry,settings.group)
+	var session := Session.new()
+	var id := session.add_geometry(shape,settings.geometry,settings.group)
+	check(session.configure_kinematic(id),"Configure tracks")
+	var dynamic := session.add_geometry(Box.new())
+	session.configure_body(dynamic,"dynamic",Vector4(1,0,0,0))
+	var projection := ProjectionTrack.new()
+	var sources := {}
+	for row in range(3):
+		for col in range(4): sources["projection.%d" % (row*4+col)]=settings.geometry.projection[row][col]
+	check(projection.apply_sources(sources,0),"Core projection expressions")
+	for time in [0.0,0.5,1.5,2.0,0.5,2.0]:
+		check(session.seek(time) and reference.seek(time),"Seek/replay")
+		check(session.world_vertices(id)==reference.world_vertices(expected_id),"Teleport exact 4D track match")
+		var view=projection.sample(time)
+		check(view.project(session.world_vertices(id))==view.project(reference.world_vertices(expected_id)),"Teleport projected match")
+	check(absf(session.physics.bodies[dynamic][0]-2)<1e-8,"Dynamic advances alongside tracks")
+	var initial := reference.world_vertices(expected_id)
+	reference.seek(0)
+	initial=reference.world_vertices(expected_id)
+	session.configure_body(id,"static",Vector4.ZERO)
+	session.seek(1)
+	check(session.world_vertices(id)==initial,"Static freezes geometry tracks")
+	session.configure_body(id,"dynamic",Vector4(1,0,0,0))
+	session.seek(1)
+	var moved := session.world_vertices(id)
+	for i in range(initial.size()): check((moved[i]-initial[i]-Vector4(1,0,0,0)).length()<1e-5,"Dynamic freezes starting geometry")
+	var parent := session.add_geometry(Box.new(),{}, {"position":{"W":"2*t"}})
+	session.configure_kinematic(parent)
+	session.configure_kinematic(id)
+	check(session.reparent(id,parent,false),"Parent tracks")
+	check(session.start_body_motion(),"Parented tracks allowed")
+	session.seek(1)
+	reference.seek(1)
+	for i in range(initial.size()): check((session.world_vertices(id)[i]-reference.world_vertices(expected_id)[i]-Vector4(0,0,0,2)).length()<1e-5,"Kinematic hierarchy")
+	session.configure_body(id,"static",Vector4.ZERO)
+	initial=session.world_vertices(id)
+	session.seek(1)
+	for i in range(initial.size()): check((session.world_vertices(id)[i]-initial[i]-Vector4(0,0,0,2)).length()<1e-5,"Static inherits moving parent")
+	session.configure_kinematic(id)
+	session.set_geometry_expressions(id,{"position.0":"sqrt(0.1-t)"},false)
+	check(not session.seek(1),"Invalid target stops simulation")
+	check(session.recording.current_step==0,"Invalid seek retains displayed time")
+	var ui = preload("res://scripts/sandbox/physics/physics_scene.gd").new()
+	root.add_child(ui)
+	var catalog = preload("res://scripts/io/shape_catalog.gd")
+	var card = null
+	for index in range(catalog.ENTRIES.size()):
+		if catalog.ENTRIES[index].get("path","").ends_with("teleport.json"):
+			card=ui.add_shape(index)
+	check(card!=null,"Physics UI imports teleport")
+	if card!=null:
+		check(card.object.sources["projection.11"]=="tan(t)","Projection expression preserved")
+		check(card.object.sources["anchor.3"]=="0","Imported anchor removed")
+		ui.run_motion()
+		check(ui.session.playback.direction==1,"Imported track body runs without conversion")
+		ui.session.pause()
+		check(ui.evaluate_time(0.5),"Physics UI seeks teleport")
+		reference.seek(0)
+		var expected_points=projection.sample(0.5).project(reference.world_vertices(expected_id))
+		for i in range(expected_points.size()): check(card.object.last_points[i].distance_to(expected_points[i])<1e-5,"Numeric starting pose with animated projection")
+	ui.queue_free()
+	await process_frame
+	print("Kinematic track failures: ",failures)
+	quit(1 if failures else 0)
