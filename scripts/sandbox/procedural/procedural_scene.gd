@@ -267,8 +267,9 @@ func request_time(value: float) -> void:
 	session.request_seek(value)
 	show_seek_status()
 
-func _process(_delta: float) -> void:
-	if session.pending_seek != null: advance_seek()
+func _process(delta: float) -> void:
+	session.advance(delta)
+	show_seek_status()
 
 func advance_seek() -> void:
 	session.advance_seek()

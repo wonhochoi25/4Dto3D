@@ -8,6 +8,9 @@ const Recording = preload("res://scripts/core/playback/simulation_recording.gd")
 const Playback = preload("res://scripts/core/playback/playback_4d.gd")
 const Physics = preload("res://scripts/core/physics/physics_world_4d.gd")
 const Binding = preload("res://scripts/core/scene/physics_binding_4d.gd")
+var physics_binding := Binding.new()
+var validated_state: Variant = null
+var validated_time := NAN
 var scene := Scene.new()
 var physics := Physics.new()
 var recording := Recording.new(physics)
@@ -90,15 +93,18 @@ func make_procedural(id: int) -> void:
 	invalidate()
 
 func sync_dynamic() -> void:
-	Binding.sync(scene,physics,playback.start)
+	physics_binding.sync(scene,physics,playback.start)
 
 func validate_step(time: float) -> bool:
 	sync_dynamic()
 	var evaluated = scene.sample(time)
+	validated_state = evaluated
+	validated_time = time
 	if evaluated == null: error = scene.error
 	return evaluated != null
 
 func invalidate() -> void:
+	physics_binding.invalidate()
 	pending_seek = null
 	playback.busy = false
 	playback.pause()
@@ -109,6 +115,8 @@ func invalidate() -> void:
 func seek(time: float, budget: int = 2147483647) -> bool:
 	if not is_finite(time): return false
 	error = ""
+	validated_state = null
+	validated_time = NAN
 	if not recording.seek(time, validate_step, budget):
 		playback.pause()
 		sync_dynamic()
@@ -116,8 +124,11 @@ func seek(time: float, budget: int = 2147483647) -> bool:
 	if not recording.ready_at(time):
 		sync_dynamic()
 		return true
-	sync_dynamic()
-	var evaluated = scene.sample(recording.time_at(recording.current_step))
+	var target_time := recording.time_at(recording.current_step)
+	var evaluated = validated_state
+	if validated_time != target_time or evaluated == null:
+		sync_dynamic()
+		evaluated = scene.sample(target_time)
 	if evaluated == null:
 		error = scene.error
 		return false
@@ -192,8 +203,8 @@ func query_collision(a_id: int, b_id: int, include_penetration: bool = false) ->
 		{"include_penetration":include_penetration})
 
 ## Physics-mode motion is an offset from the edited group pose. All edits restart history.
-func configure_body(id: int, body_type: String, initial_velocity: Vector4) -> bool:
-	if not Binding.configure(scene,physics,id,body_type,initial_velocity):
+func configure_body(id: int, body_type: String, initial_velocity: Vector4, motion: Dictionary = {}) -> bool:
+	if not Binding.configure(scene,physics,id,body_type,initial_velocity,motion):
 		error = Binding.configuration_error(scene,physics,id)
 		return false
 	error = ""

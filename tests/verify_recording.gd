@@ -44,7 +44,7 @@ func verify():
 	scene.apply_card(card)
 	check(scene.timeline.time == 0 and scene.recording.frames.size() == 1, "Transform edit resets")
 	scene.timeline.direction = 1
-	for i in range(120): scene.timeline._process(1.0/120.0)
+	for i in range(120): scene._process(1.0/120.0)
 	check(absf(scene.timeline.time-1) < 0.00001, "High FPS accumulates fractional steps")
 	scene.queue_free()
 	await process_frame

@@ -101,9 +101,6 @@ func accept(value: float) -> void:
 	time_field.get_line_edit().text = "%.3f" % time
 	message.text = "t = %.3f s" % time
 
-func _process(delta: float) -> void:
-	playback.advance(delta)
-
 func button(parent: Node, title: String, action: Callable) -> void:
 	var result := Button.new()
 	result.text = title

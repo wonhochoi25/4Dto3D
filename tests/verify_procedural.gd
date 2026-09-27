@@ -92,7 +92,7 @@ func verify() -> void:
 	# Timeline sampling, bounds, looping and input controls.
 	scene.timeline.accept(5)
 	scene.timeline.direction = -1
-	scene.timeline._process(0.25)
+	scene._process(0.25)
 	while scene.pending_seek != null: scene.advance_seek()
 	check(is_equal_approx(scene.timeline.time, 4.75), "Reverse playback")
 	scene.timeline.scrub(1.25)
@@ -100,13 +100,13 @@ func verify() -> void:
 	scene.timeline.looping = true
 	scene.timeline.accept(0.1)
 	scene.timeline.direction = -1
-	scene.timeline._process(0.25)
+	scene._process(0.25)
 	while scene.pending_seek != null: scene.advance_seek()
 	check(is_equal_approx(scene.timeline.time, 9.85), "Reverse looping")
 	scene.timeline.looping = false
 	scene.timeline.accept(0.1)
 	scene.timeline.direction = -1
-	scene.timeline._process(0.25)
+	scene._process(0.25)
 	check(scene.timeline.time == 0 and scene.timeline.direction == 0, "Stop at range bound")
 	scene.timeline.start_field.get_line_edit().text = "-5"
 	scene.timeline.end_field.get_line_edit().text = "5"

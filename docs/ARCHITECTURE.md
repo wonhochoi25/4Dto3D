@@ -185,3 +185,13 @@ No contact solver file exists yet: there is no collision response or acceleratio
 `core/playback/simulation_recording.gd` now takes a runtime in its constructor: `Recording.new(physics)`. Any compatible runtime can supply `reset()`, `step(dt)`, `snapshot() -> Dictionary`, and `restore(snapshot)`. Snapshots must own their mutable state; body configuration changes require recording reset. The recorder treats payload dictionaries as opaque. The old `scripts/procedural/simulation_recording.gd` keeps its legacy no-argument default via a thin compatibility wrapper. The old core simulation path also forwards to PhysicsWorld4D; it contains no physics logic.
 
 See [PHYSICS.md](PHYSICS.md) for standalone usage. `tools/verify_physics_isolation.py GODOT_BINARY` enforces allowed imports and runs physics with only physics/math installed, then runs the recorder with only playback installed and a non-physics test runtime. The complete core isolation test and the literal collision-backend replacement test remain in place.
+
+### Unified advancement
+
+The host calls `session.advance(delta)` once per frame in either Procedural or
+Physics mode. Timeline controls have no independent update loop. The session
+coordinates playback → recording → physics, then uses the scene binding to evaluate
+transforms for display. Physics owns integration, recording owns snapshots, and the
+scene binding owns cached conversion between body motion and group transforms.
+See [PHYSICS.md](PHYSICS.md#update-and-state-ownership) for cache invalidation and
+snapshot ownership requirements.

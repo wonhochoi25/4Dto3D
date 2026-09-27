@@ -1,5 +1,5 @@
 extends "res://scripts/sandbox/procedural/procedural_scene.gd"
-## Translation-only body sandbox. The core owns body settings and recorded motion.
+## Linear and angular body-motion sandbox. The core owns body settings and recorded motion.
 var motion_label: Label
 var body_editors := {}
 func _init() -> void:
@@ -23,7 +23,7 @@ func _ready() -> void:
 	sidebar_box.add_child(motion_label)
 	sidebar_box.move_child(motion_label,3)
 	var help: Label = sidebar_box.get_child(1)
-	help.text="Static stays fixed · Kinematic follows prescribed velocity.\nDynamic integrates velocity. No forces or collision response.\nWorld-parented bodies only. Edits restart the 60-second run."
+	help.text="Static stays fixed · Kinematic follows prescribed motion.\nWorld axes/planes · Constant accelerations. No collision response.\nWorld-parented bodies only. Edits restart the 60-second run."
 
 func add_shape(index: int):
 	if session.playback.direction!=0 or session.pending_seek!=null:
@@ -49,20 +49,29 @@ func build_node_actions(card, contents: VBoxContainer) -> void:
 	picker.select(["static","kinematic","dynamic"].find(config.type))
 	panel.add_child(picker)
 	var fields := []
-	var grid := GridContainer.new()
-	grid.columns=4
-	panel.add_child(grid)
-	for axis in ["X","Y","Z","W"]:
-		var label := Label.new()
-		label.text="Velocity "+axis
-		grid.add_child(label)
-	for axis in range(4):
-		var field := LineEdit.new()
-		field.text=str(config.velocity[axis])
-		field.custom_minimum_size.x=100
-		field.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		grid.add_child(field)
-		fields.append(field)
+	var values := motion_values(config)
+	var groups := [
+		["Linear velocity · units/s",["X","Y","Z","W"]],
+		["Linear acceleration · units/s²",["X","Y","Z","W"]],
+		["Angular velocity · degrees/s",["XY","XZ","XW","YZ","YW","ZW"]],
+		["Angular acceleration · degrees/s²",["XY","XZ","XW","YZ","YW","ZW"]]]
+	for group in groups:
+		var heading := Label.new()
+		heading.text=group[0]
+		panel.add_child(heading)
+		var grid := GridContainer.new()
+		grid.columns=4 # Two label/value pairs per row, including the six-plane fields.
+		panel.add_child(grid)
+		for component in group[1]:
+			var label := Label.new()
+			label.text=component
+			grid.add_child(label)
+			var field := LineEdit.new()
+			field.text=str(values[fields.size()])
+			field.custom_minimum_size.x=100
+			field.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+			grid.add_child(field)
+			fields.append(field)
 	var update_enabled := func(_index=0):
 		for field in fields: field.editable=picker.selected!=0
 	picker.item_selected.connect(update_enabled)
@@ -75,16 +84,29 @@ func build_node_actions(card, contents: VBoxContainer) -> void:
 
 func apply_body(id: int, picker: OptionButton, fields: Array) -> void:
 	if not can_edit(): return
-	var velocity := Vector4.ZERO
-	for i in range(4):
-		var text: String=fields[i].text.strip_edges()
+	var values := PackedFloat64Array()
+	for field in fields:
+		var text: String=field.text.strip_edges()
 		if not text.is_valid_float() or not is_finite(text.to_float()):
-			show_tree_error("Initial velocity must contain four finite numbers.")
+			show_tree_error("Motion fields must contain finite numbers.")
 			return
-		velocity[i]=text.to_float()
-	if not session.configure_body(id,["static","kinematic","dynamic"][picker.selected],velocity):
+		values.append(text.to_float())
+	var velocity := Vector4(values[0],values[1],values[2],values[3])
+	var motion := {"acceleration":Vector4(values[4],values[5],values[6],values[7]),
+		"angular_velocity":values.slice(8,14),"angular_acceleration":values.slice(14,20)}
+	if not session.configure_body(id,["static","kinematic","dynamic"][picker.selected],velocity,motion):
 		show_tree_error(session.error)
 	else: tree_message.hide()
+
+## UI flattening only; state layout and integration remain in core/physics.
+func motion_values(config: Dictionary) -> PackedFloat64Array:
+	var result := PackedFloat64Array()
+	for key in ["velocity","acceleration"]:
+		var value: Vector4=config.get(key,Vector4.ZERO)
+		for axis in range(4): result.append(value[axis])
+	for key in ["angular_velocity","angular_acceleration"]:
+		result.append_array(config.get(key,PackedFloat64Array([0,0,0,0,0,0])))
+	return result
 
 func can_edit() -> bool:
 	if session.playback.direction!=0 or session.pending_seek!=null:
@@ -120,10 +142,11 @@ func run_motion() -> void:
 		if ["static","kinematic","dynamic"][editor.picker.selected]!=config.type:
 			show_tree_error("Apply pending body settings before Run.")
 			return
-		for axis in range(4):
+		var values := motion_values(config)
+		for axis in range(values.size()):
 			var text: String=editor.fields[axis].text
-			if not text.is_valid_float() or not is_equal_approx(text.to_float(),config.velocity[axis]):
-				show_tree_error("Apply pending velocity before Run.")
+			if not text.is_valid_float() or not is_equal_approx(text.to_float(),values[axis]):
+				show_tree_error("Apply pending motion fields before Run.")
 				return
 	if not session.start_body_motion(): show_tree_error(session.error)
 	else: tree_message.hide()

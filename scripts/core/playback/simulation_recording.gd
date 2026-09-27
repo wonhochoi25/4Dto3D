@@ -31,7 +31,10 @@ func time_at(index: int) -> float:
 func trim(to: float) -> void:
 	end = to
 	if frames.size() > last_step() + 1: frames.resize(last_step() + 1)
+	var previous_step := current_step
 	current_step = mini(current_step, last_step())
+	if previous_step != current_step and not frames.is_empty():
+		simulation.restore(frames[current_step])
 
 ## Return false on invalid simulation step; valid earlier snapshots remain usable.
 ## A budget allows distant seeks to yield to the UI between batches.
@@ -43,11 +46,16 @@ func seek(time: float, validate: Callable, budget: int = 2147483647) -> bool:
 			error = "Invalid initial state"
 			return false
 		frames.append(simulation.snapshot())
+	# Runtime starts at current_step; extend the recorded tail continuously.
+	var runtime_step := current_step
+	if frames.size() <= target and budget > 0 and runtime_step != frames.size() - 1:
+		simulation.restore(frames.back())
+		runtime_step = frames.size() - 1
 	var steps := 0
 	var started := Time.get_ticks_usec()
 	while frames.size() <= target and steps < budget:
-		simulation.restore(frames.back())
 		simulation.step(STEP)
+		runtime_step += 1
 		if not validate.call(time_at(frames.size())):
 			simulation.restore(frames[current_step])
 			error = "Invalid simulation step"
@@ -56,10 +64,10 @@ func seek(time: float, validate: Callable, budget: int = 2147483647) -> bool:
 		steps += 1
 		if budget != 2147483647 and Time.get_ticks_usec() - started > 8000: break
 	if frames.size() <= target:
-		simulation.restore(frames[current_step])
+		if runtime_step != current_step: simulation.restore(frames[current_step])
 		return true
 	current_step = target
-	simulation.restore(frames[target])
+	if runtime_step != target: simulation.restore(frames[target])
 	return true
 
 func ready_at(time: float) -> bool:
