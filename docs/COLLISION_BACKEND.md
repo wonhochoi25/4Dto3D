@@ -4,7 +4,7 @@ Collision detection is behind a general backend. **You can exchange the default 
 
 ## Replace the backend
 
-Replace `scripts/core/collision/collision_backend.gd` with a GDScript exposing:
+Replace `scripts/core/physics/collision/collision_backend.gd` with a GDScript exposing:
 
 ```gdscript
 extends RefCounted

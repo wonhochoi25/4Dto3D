@@ -1,8 +1,11 @@
 extends RefCounted
 ## Snapshots contain dynamic state, never vertices, projected meshes, or UI data.
 const STEP := 1.0 / 60.0
-const Simulation = preload("res://scripts/core/simulation/simulation_4d.gd")
-var simulation := Simulation.new()
+var simulation
+
+## Inject any runtime implementing reset/step/snapshot/restore. No physics dependency.
+func _init(runtime) -> void:
+	simulation = runtime
 var frames: Array[Dictionary] = []
 var start := 0.0
 var end := 10.0

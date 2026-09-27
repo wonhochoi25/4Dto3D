@@ -1,7 +1,7 @@
 extends SceneTree
-const GJK = preload("res://scripts/core/collision/gjk_4d.gd")
-const Collider = preload("res://scripts/core/collision/convex_vertices_4d.gd")
-const Simplex = preload("res://scripts/core/collision/simplex_4d.gd")
+const GJK = preload("res://scripts/core/physics/collision/gjk_4d.gd")
+const Collider = preload("res://scripts/core/physics/collision/convex_vertices_4d.gd")
+const Simplex = preload("res://scripts/core/physics/collision/simplex_4d.gd")
 const Math4D = preload("res://scripts/core/math/transform_4d.gd")
 const Box = preload("res://scripts/core/geometry/generators/tesseract.gd")
 var failures := 0

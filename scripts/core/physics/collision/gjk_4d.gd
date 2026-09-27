@@ -1,8 +1,8 @@
 extends RefCounted
 ## Distance GJK for compact convex support maps in R4. No scene, IO or renderer.
 ## Support providers expose valid, center, radius, and support(double4).
-const Simplex = preload("res://scripts/core/collision/simplex_4d.gd")
-const Vertices = preload("res://scripts/core/collision/convex_vertices_4d.gd")
+const Simplex = preload("res://scripts/core/physics/collision/simplex_4d.gd")
+const Vertices = preload("res://scripts/core/physics/collision/convex_vertices_4d.gd")
 const ABS_TOLERANCE := 1e-7
 const REL_TOLERANCE := 1e-6
 

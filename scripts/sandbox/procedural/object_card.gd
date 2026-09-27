@@ -3,6 +3,8 @@ extends PanelContainer
 signal apply_requested(card)
 signal remove_requested(card)
 signal style_changed(card)
+var numeric_mode := false
+var hull_status: Label
 var object
 var renderer
 var fields: Dictionary = {}
@@ -61,6 +63,13 @@ func setup(model, mesh_renderer) -> void:
 	opacity.value_changed.connect(func(value: float): object.color.a = value; style_changed.emit(self))
 	appearance.add_child(opacity)
 	appearance.visible = not object.is_group
+	if numeric_mode:
+		opacity.hide()
+		opacity_label.hide()
+		hull_status = Label.new()
+		hull_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		hull_status.visible = not object.is_group
+		body.add_child(hull_status)
 	var tabs := TabContainer.new()
 	tabs.use_hidden_tabs_for_min_size = false
 	body.add_child(tabs)
@@ -77,7 +86,7 @@ func setup(model, mesh_renderer) -> void:
 			anchor_keep_toggle.toggled.connect(func(enabled: bool): object.keep_anchor_in_place = enabled)
 			section.add_child(anchor_keep_toggle)
 			var note := Label.new()
-			note.text = "Adjusts Position expressions at the current t on Apply."
+			note.text = "Adjusts Position to preserve the current pose on Apply." if numeric_mode else "Adjusts Position expressions at the current t on Apply."
 			note.add_theme_font_size_override("font_size", 13)
 			section.add_child(note)
 		var names := ["X", "Y", "Z", "W"]
@@ -97,7 +106,7 @@ func setup(model, mesh_renderer) -> void:
 			var key := "%s.%d" % [component, i]
 			field.text = object.sources[key]
 			field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			field.placeholder_text = "Expression in t"
+			field.placeholder_text = "Number" if numeric_mode else "Expression in t"
 			row.add_child(field)
 			fields[key] = field
 			var error_label := Label.new()
@@ -107,7 +116,7 @@ func setup(model, mesh_renderer) -> void:
 			section.add_child(error_label)
 			errors[key] = error_label
 	var apply := Button.new()
-	apply.text = "Apply expressions"
+	apply.text = "Apply values" if numeric_mode else "Apply expressions"
 	apply.pressed.connect(func(): apply_requested.emit(self))
 	body.add_child(apply)
 	message = Label.new()
@@ -168,6 +177,7 @@ func build_projection_matrix(section: VBoxContainer) -> void:
 			field.custom_minimum_size.x = 90
 			field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			field.tooltip_text = "Output %s ← input %s · expression in t" % [["X", "Y", "Z"][row], ["X", "Y", "Z", "W"][column]]
+			if numeric_mode: field.tooltip_text = "Numeric projection coefficient"
 			cell.add_child(field)
 			fields[key] = field
 			var error_label := Label.new()

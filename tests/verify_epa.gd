@@ -1,7 +1,7 @@
 extends SceneTree
-const EPA = preload("res://scripts/core/collision/epa_4d.gd")
-const GJK = preload("res://scripts/core/collision/gjk_4d.gd")
-const Collider = preload("res://scripts/core/collision/convex_vertices_4d.gd")
+const EPA = preload("res://scripts/core/physics/collision/epa_4d.gd")
+const GJK = preload("res://scripts/core/physics/collision/gjk_4d.gd")
+const Collider = preload("res://scripts/core/physics/collision/convex_vertices_4d.gd")
 const Math4D = preload("res://scripts/core/math/transform_4d.gd")
 const Box = preload("res://scripts/core/geometry/generators/tesseract.gd")
 var failures := 0
@@ -88,4 +88,4 @@ func verify():
 	print("EPA failures: ",failures)
 	quit(1 if failures else 0)
 
-func Simplex_dot(a,b): return preload("res://scripts/core/collision/simplex_4d.gd").dot(a,b)
+func Simplex_dot(a,b): return preload("res://scripts/core/physics/collision/simplex_4d.gd").dot(a,b)

@@ -6,13 +6,18 @@ signal scene_changed
 const Scene = preload("res://scripts/core/scene/scene_4d.gd")
 const Recording = preload("res://scripts/core/playback/simulation_recording.gd")
 const Playback = preload("res://scripts/core/playback/playback_4d.gd")
-const Math4D = preload("res://scripts/core/math/transform_4d.gd")
+const Physics = preload("res://scripts/core/physics/physics_world_4d.gd")
+const Binding = preload("res://scripts/core/scene/physics_binding_4d.gd")
 var scene := Scene.new()
-var recording := Recording.new()
+var physics := Physics.new()
+var recording := Recording.new(physics)
 var playback := Playback.new()
 var state: Dictionary = {}
 var pending_seek: Variant = null
 var error := ""
+# Physics translation offsets; legacy make_dynamic retains its original semantics.
+var motion_settings: Dictionary:
+	get: return physics.motion_settings
 
 func _init() -> void:
 	playback.time_requested.connect(request_seek)
@@ -65,8 +70,7 @@ func remove_object(id: int) -> bool:
 	if not scene.remove_object(id, playback.time):
 		error = scene.error
 		return false
-	recording.simulation.initial_bodies.erase(id)
-	recording.simulation.bodies.erase(id)
+	physics.remove_body(id)
 	invalidate()
 	scene_changed.emit()
 	return true
@@ -78,23 +82,15 @@ func replace_geometry(id: int, geometry) -> void:
 ## Dynamic motion is local to the object's group parent frame. Geometry track remains usable.
 func make_dynamic(id: int, position: Vector4, velocity: Vector4) -> void:
 	assert(scene.objects.has(id))
-	recording.simulation.add_body(id, position, velocity)
+	physics.add_body(id, position, velocity)
 	invalidate()
 
 func make_procedural(id: int) -> void:
-	recording.simulation.initial_bodies.erase(id)
-	recording.simulation.bodies.erase(id)
+	physics.remove_body(id)
 	invalidate()
 
 func sync_dynamic() -> void:
-	scene.dynamic_matrices.clear()
-	for id in recording.simulation.bodies:
-		var body: PackedFloat64Array = recording.simulation.bodies[id]
-		var matrix := Math4D.identity()
-		for row in range(4):
-			matrix[row * 5 + 4] = body[row]
-			for col in range(4): matrix[row * 5 + col] = body[8 + row * 4 + col]
-		scene.dynamic_matrices[id] = matrix
+	Binding.sync(scene,physics,playback.start)
 
 func validate_step(time: float) -> bool:
 	sync_dynamic()
@@ -173,12 +169,14 @@ func cancel_seek() -> void:
 	pending_seek = null
 	playback.busy = false
 	playback.pause()
-	recording.simulation.restore(recording.frames[recording.current_step] if not recording.frames.is_empty() else {})
+	physics.restore(recording.frames[recording.current_step] if not recording.frames.is_empty() else {})
 	sync_dynamic()
 
 ## Replace this script with any backend implementing docs/COLLISION_BACKEND.md.
 ## Assigning another script here also allows isolated backend tests/integration.
-var collision_backend = preload("res://scripts/core/collision/collision_backend.gd")
+var collision_backend:
+	get: return physics.collision_backend
+	set(value): physics.collision_backend = value
 
 ## Read-only narrow-phase query. Other session features do not invoke this backend.
 func query_collision(a_id: int, b_id: int, include_penetration: bool = false) -> Dictionary:
@@ -188,7 +186,23 @@ func query_collision(a_id: int, b_id: int, include_penetration: bool = false) ->
 	var b: Dictionary = scene.objects[b_id]
 	if not state.has(a.leaf_id) or not state.has(b.leaf_id):
 		return {"status":"indeterminate","reason":"No valid evaluated state"}
-	return collision_backend.query(
+	return physics.query_collision(
 		{"geometry":a.geometry,"world":state[a.leaf_id].world},
 		{"geometry":b.geometry,"world":state[b.leaf_id].world},
 		{"include_penetration":include_penetration})
+
+## Physics-mode motion is an offset from the edited group pose. All edits restart history.
+func configure_body(id: int, body_type: String, initial_velocity: Vector4) -> bool:
+	if not Binding.configure(scene,physics,id,body_type,initial_velocity):
+		error = Binding.configuration_error(scene,physics,id)
+		return false
+	error = ""
+	invalidate()
+	return true
+
+func start_body_motion() -> bool:
+	error = Binding.run_error(scene,physics)
+	if not error.is_empty(): return false
+	if playback.time >= playback.end: invalidate()
+	play(1)
+	return true

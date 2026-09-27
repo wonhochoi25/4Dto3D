@@ -1,8 +1,8 @@
 extends RefCounted
 ## Expanding polytope penetration query in R4. No movement or collision response.
 ## Facets are tetrahedra; their triangular ridges form the expansion horizon.
-const GJK = preload("res://scripts/core/collision/gjk_4d.gd")
-const Simplex = preload("res://scripts/core/collision/simplex_4d.gd")
+const GJK = preload("res://scripts/core/physics/collision/gjk_4d.gd")
+const Simplex = preload("res://scripts/core/physics/collision/simplex_4d.gd")
 const HULL_EPS := 1e-10
 const MAX_FACETS := 4096
 

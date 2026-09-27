@@ -12,7 +12,7 @@ with tempfile.TemporaryDirectory(prefix="collision-backend-swap-") as directory:
         if (project / folder).exists():
             shutil.copytree(project / folder, root / folder)
     shutil.copyfile(project / "project.godot", root / "project.godot")
-    backend = root / "scripts/core/collision"
+    backend = root / "scripts/core/physics/collision"
     for path in backend.iterdir():
         if path.name != "collision_backend.gd":
             path.unlink()

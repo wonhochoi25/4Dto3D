@@ -342,7 +342,7 @@ For overlapping objects, enable **Estimate penetration** in the collision inspec
 
 ### Swapping collision algorithms
 
-Collision checks use a **general, replaceable backend** at `scripts/core/collision/collision_backend.gd`. Replace that entry with another implementation of the same query signature and documented result structure; the session and inspector continue to run. The default adapter uses GJK/EPA, but detection-only or other collision algorithms can omit unsupported measurements. See [the collision backend contract](docs/COLLISION_BACKEND.md) for exact inputs, required/optional outputs, replacement instructions, and the replacement test. Geometry transforms, playback, and rendering do not depend on the chosen algorithm.
+Collision checks use a **general, replaceable backend** at `scripts/core/physics/collision/collision_backend.gd`. Replace that entry with another implementation of the same query signature and documented result structure; the session and inspector continue to run. The default adapter uses GJK/EPA, but detection-only or other collision algorithms can omit unsupported measurements. See [the collision backend contract](docs/COLLISION_BACKEND.md) for exact inputs, required/optional outputs, replacement instructions, and the replacement test. Geometry transforms, playback, and rendering do not depend on the chosen algorithm.
 
 ### Export a selected procedural shape
 
@@ -351,3 +351,25 @@ Playground and Procedural 1 open on startup, with Playground selected. Playgroun
 In a procedural tab, select a shape and click **Export shape…** beneath its Parent selector. Apply pending Geometry and Group expression edits first. The save dialog starts in `data/custom_shapes`; choose a new `.json` filename. Restart the app to refresh shape selectors, then select the exported shape like any other custom shape. Files saved elsewhere can be copied into `data/custom_shapes` before restart. No separate import feature is needed.
 
 Export uses the same schema as `hi_4d.json`: name, local vertices/edges/faces, geometry position/rotation/scale/anchor expressions, the 3×4 projection expressions, and the selected shape's own group position/rotation/uniform-scale/anchor expressions. Applied expressions are saved as expressions, not evaluated at the current time. Only that shape is exported: no parent/children, inherited transforms, or fixed reparenting offsets. It loads under World and can therefore have a different world pose. This is a custom-shape asset, not a scene save: appearance, camera, timeline/history, and editor preferences such as the anchor-compensation checkbox are not part of this existing format.
+
+### Physics workspace: solid geometry preview
+
+A **Physics** tab opens alongside Playground and Procedural. It is a persistent workspace tab; **+** still creates procedural tabs. Add shapes and edit their Geometry/Group numeric transforms, hierarchy, and numeric projection matrix. Custom shape expressions are sampled at `t=0` when added, then converted to constants. Physics provides translation-only body motion with Run/Pause/Reset; it has no procedural timeline or forces. Use Procedural for time-dependent expressions.
+
+The occupied 4D region is assumed to be the convex hull of local vertices (the existing collision convention). Physics displays its linear 3D projection as a freshly computed, opaque convex hull—not the collection of projected internal 2D faces. Holes/concavities in custom wire geometry are filled. Optional edges/selection show exterior hull edges. Planar projections render a double-sided surface; lines/points use an outline or small marker, with a dimension label. Different shapes can still overlap visually while separated in 4D.
+
+### Basic body motion in Physics
+
+Select a shape to find **Body motion · starting settings** below the transform/parent controls. Choose Static, Kinematic, or Dynamic, enter initial X/Y/Z/W velocity (world units per second), then **Apply body settings (reset run)**. Static is the default and ignores velocity. Kinematic enforces its prescribed constant velocity; Dynamic integrates its simulated velocity. They look the same in free motion until forces or collision response are added.
+
+Use **Run**, **Pause**, and **Reset** at the top of the Physics panel. Runs use 1/60-second fixed steps and stop at 60 seconds; Run at the end starts again. Reset restores all starting poses. Pause before changing transforms/body settings, adding/removing shapes, or parenting; applied edits restart the run and clear history. Pending transform/body fields must be applied before Run. Switching tabs pauses motion.
+
+For this first version, all Physics shapes must be directly under World to run. Parenting remains available while paused, but Run explicitly rejects parented bodies. This prevents inherited movement contradicting static-body semantics. Rotation/scale stay at the edited starting pose. There is no gravity, force integration, mass-based response, friction, or collision response; shapes can pass through each other. The collision inspector is read-only. W velocity can be invisible in an XYZ projection.
+
+Body settings are sandbox simulation configuration, not part of the existing custom-shape JSON export format. Export still saves only the shape's own mesh and transform/projection fields, not simulated displacement or velocity.
+
+### Core physics module
+
+Physics is isolated under `scripts/core/physics`: `physics_world_4d.gd` coordinates body state and stepping, `body_4d.gd` defines state/layout, `integrator_4d.gd` implements motion, and `collision/` contains the replaceable backend. Scene hierarchy/PRSA mapping stays in `core/scene/physics_binding_4d.gd`. Playback records an injected runtime and does not import physics. Session composes these modules; it no longer implements body-state mapping or integration. See [Physics API and boundaries](docs/PHYSICS.md).
+
+**The collision-backend entry moved to `scripts/core/physics/collision/collision_backend.gd`.** Its replacement contract is unchanged. Existing body behavior, controls, and snapshot format remain unchanged; acceleration has not been added.

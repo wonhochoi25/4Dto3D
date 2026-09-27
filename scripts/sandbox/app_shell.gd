@@ -49,6 +49,7 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(sync_tab_resolution)
 	add_page(Playground.instantiate(), "Playground", false)
 	new_procedural()
+	add_page(preload("res://scripts/sandbox/physics/physics_scene.gd").new(), "Physics", false)
 	activate(0)
 
 ## Visible tab surfaces distinguish the active workspace from inactive tabs.

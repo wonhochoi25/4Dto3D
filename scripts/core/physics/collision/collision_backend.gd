@@ -2,9 +2,9 @@ extends RefCounted
 ## Replaceable narrow-phase entry point. Contract: docs/COLLISION_BACKEND.md.
 ## Inputs contain geometry (local Geometry4D) and world (row-major 5x5 matrix).
 ## Inputs are borrowed read-only. No projection, rendering, IO or state mutation.
-const GJK = preload("res://scripts/core/collision/gjk_4d.gd")
-const EPA = preload("res://scripts/core/collision/epa_4d.gd")
-const Collider = preload("res://scripts/core/collision/convex_vertices_4d.gd")
+const GJK = preload("res://scripts/core/physics/collision/gjk_4d.gd")
+const EPA = preload("res://scripts/core/physics/collision/epa_4d.gd")
+const Collider = preload("res://scripts/core/physics/collision/convex_vertices_4d.gd")
 
 static func query(a: Dictionary, b: Dictionary, options: Dictionary = {}) -> Dictionary:
 	var ca = Collider.new(a.geometry.vertices,a.world)
