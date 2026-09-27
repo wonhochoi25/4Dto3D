@@ -128,4 +128,10 @@ Successful results contain `status` (`penetrating` or `touching` within toleranc
 
 Lower-dimensional differences, hull degeneracy, duplicate support without convergence, or iteration/facet budgets return explicit `indeterminate` with no usable translation. The query is bounded at 192 expansion iterations / 4096 facets; smooth or difficult shapes can remain unresolved. Initialization work is additional to the displayed EPA iteration count. This remains experimental floating-point geometry, not a guarantee for every convex input.
 
-The sandbox exposes an opt-in **Estimate penetration (4D EPA)** checkbox. It reports results without modifying simulation state or applying response. Validation includes analytic box depths, containment, contact, common 4D rotations, independent XW rotations against SAT, witness consistency, swapped order, scale, and translating past the estimated contact depth.
+The sandbox exposes an opt-in **Estimate penetration** checkbox. It reports results without modifying simulation state or applying response. Validation includes analytic box depths, containment, contact, common 4D rotations, independent XW rotations against SAT, witness consistency, swapped order, scale, and translating past the estimated contact depth.
+
+### Replaceable backend boundary
+
+Production callers now depend only on `core/collision/collision_backend.gd`, not GJK or EPA. The entry receives local geometry plus evaluated world matrices and returns a standardized result. The session's `query_collision` API is unchanged; `session.collision_backend` optionally selects a different compatible script. The inspector checks optional measurements before displaying them and supports detection-only backends. Algorithm details remain inside the default adapter and optional diagnostics.
+
+**The general collision backend can be exchanged for other collision checks that fit the specified output structure.** See [COLLISION_BACKEND.md](COLLISION_BACKEND.md) for the complete input/output contract, field types, unavailable-result conventions, direction semantics, and literal file-replacement instructions. Existing descriptions above of GJK/EPA internals apply to the default implementation only; their raw result dictionaries are no longer exposed by the session. In particular, simplex internals stay private and iteration counts live under `diagnostics`.

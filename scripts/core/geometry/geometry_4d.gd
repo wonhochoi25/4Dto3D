@@ -27,4 +27,3 @@ func connect_shortest_pairs() -> void:
 		for j in range(i + 1, vertices.size()):
 			if absf(vertices[i].distance_squared_to(vertices[j]) - shortest) < shortest * 0.0001:
 				edges.append(Vector2i(i, j))
-

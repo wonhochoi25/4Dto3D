@@ -176,18 +176,19 @@ func cancel_seek() -> void:
 	recording.simulation.restore(recording.frames[recording.current_step] if not recording.frames.is_empty() else {})
 	sync_dynamic()
 
-## Read-only narrow-phase query of current world state. Colliders are convex hulls.
+## Replace this script with any backend implementing docs/COLLISION_BACKEND.md.
+## Assigning another script here also allows isolated backend tests/integration.
+var collision_backend = preload("res://scripts/core/collision/collision_backend.gd")
+
+## Read-only narrow-phase query. Other session features do not invoke this backend.
 func query_collision(a_id: int, b_id: int, include_penetration: bool = false) -> Dictionary:
-	var gjk = preload("res://scripts/core/collision/gjk_4d.gd")
-	var collider = preload("res://scripts/core/collision/convex_vertices_4d.gd")
 	if a_id == b_id or not scene.objects.has(a_id) or not scene.objects.has(b_id):
-		return gjk.unknown("Choose two different existing objects")
+		return {"status":"indeterminate","reason":"Choose two different existing objects"}
 	var a: Dictionary = scene.objects[a_id]
 	var b: Dictionary = scene.objects[b_id]
-	if not state.has(a.leaf_id) or not state.has(b.leaf_id): return gjk.unknown("No valid evaluated state")
-	var ca = collider.new(a.geometry.vertices,state[a.leaf_id].world)
-	var cb = collider.new(b.geometry.vertices,state[b.leaf_id].world)
-	var result: Dictionary = gjk.query(ca,cb)
-	if include_penetration and result.status == "intersecting":
-		result.penetration = preload("res://scripts/core/collision/epa_4d.gd").query(ca,cb,result)
-	return result
+	if not state.has(a.leaf_id) or not state.has(b.leaf_id):
+		return {"status":"indeterminate","reason":"No valid evaluated state"}
+	return collision_backend.query(
+		{"geometry":a.geometry,"world":state[a.leaf_id].world},
+		{"geometry":b.geometry,"world":state[b.leaf_id].world},
+		{"include_penetration":include_penetration})

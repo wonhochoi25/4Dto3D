@@ -338,4 +338,8 @@ The inspector operates on convex hulls of world-space 4D vertices. It reports se
 
 Run `tests/verify_gjk.gd` and `tests/verify_collision_inspector.gd` with Godot's `--headless --path . --script` options for mathematical and sandbox integration checks.
 
-For overlapping objects, enable **Estimate penetration (4D EPA)** in the collision inspector. EPA reports depth bounds and a 4D translation for B to reach contact while A stays fixed. No motion is applied. With two default tesseracts and B at W=1, expect depth 1 and direction +W. At W=2, expect zero-depth contact. Unresolved or lower-dimensional cases are reported explicitly. Run `tests/verify_epa.gd` for penetration tests.
+For overlapping objects, enable **Estimate penetration** in the collision inspector. EPA reports depth bounds and a 4D translation for B to reach contact while A stays fixed. No motion is applied. With two default tesseracts and B at W=1, expect depth 1 and direction +W. At W=2, expect zero-depth contact. Unresolved or lower-dimensional cases are reported explicitly. Run `tests/verify_epa.gd` for penetration tests.
+
+### Swapping collision algorithms
+
+Collision checks use a **general, replaceable backend** at `scripts/core/collision/collision_backend.gd`. Replace that entry with another implementation of the same query signature and documented result structure; the session and inspector continue to run. The default adapter uses GJK/EPA, but detection-only or other collision algorithms can omit unsupported measurements. See [the collision backend contract](docs/COLLISION_BACKEND.md) for exact inputs, required/optional outputs, replacement instructions, and the replacement test. Geometry transforms, playback, and rendering do not depend on the chosen algorithm.
