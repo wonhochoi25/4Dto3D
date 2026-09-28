@@ -9,6 +9,8 @@ func check(ok: bool, label: String):
 func _initialize(): call_deferred("verify")
 func verify():
 	var session := Session.new()
+	session.overlap_correction_enabled=false
+	session.collision_impulses_enabled=false
 	var ids := []
 	for type in ["static","kinematic","dynamic"]:
 		var id := session.add_geometry(Box.new(),{"position":{"X":2},"rotation":{"XW":30},"scale":{"Y":2}}, {"position":{"W":3},"rotation":{"XY":20},"scale":2})

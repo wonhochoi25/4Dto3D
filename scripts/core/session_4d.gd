@@ -7,6 +7,16 @@ signal scene_changed
 signal contacts_evaluated(time: float, reports: Array)
 var contact_reports: Array[Dictionary]=[]
 var validated_contacts: Array[Dictionary]=[]
+## Configuration changes require invalidate() to restart recorded history.
+var collision_impulses_enabled := true
+var impulse_result: Dictionary = {}
+var impulse_options: Dictionary = {"iterations":32,"contact_margin":0.005,"bounce_threshold":1.0,"velocity_tolerance":0.000001}
+var prescribed_contact_velocities: Dictionary = {}
+var prescribed_contact_frames: Dictionary = {}
+var overlap_correction_enabled := true
+var overlap_options: Dictionary = {"slop":0.0001,"iterations":8}
+var overlap_result: Dictionary = {}
+var correction_time := 0.0
 var contact_options: Dictionary={"include_penetration":true}
 const Scene = preload("res://scripts/core/scene/scene_4d.gd")
 const Recording = preload("res://scripts/core/playback/simulation_recording.gd")
@@ -109,6 +119,22 @@ func validate_step(time: float) -> bool:
 	if not sync_dynamic():
 		error = scene.error
 		return false
+	# Preserve authored starting poses; response begins on the first simulated step.
+	overlap_result={}
+	impulse_result={}
+	if collision_impulses_enabled and time>playback.start and physics.bodies.size()>1:
+		correction_time=time
+		var before=scene.sample(time)
+		if before==null: return false
+		prepare_contact_velocities(before,time)
+		var reports=physics.query_contacts(Binding.colliders(scene,physics,before),{"include_penetration":true})
+		var options:=impulse_options.duplicate()
+		options.dt=Recording.STEP
+		impulse_result=physics.resolve_impulses(reports,contact_velocity,contact_impulses,options,contact_point_velocity,contact_point_impulses)
+	if overlap_correction_enabled and time>playback.start and physics.bodies.size()>1:
+		correction_time=time
+		overlap_result=physics.resolve_overlaps(correction_colliders,overlap_options,correct_positions)
+		if not sync_dynamic(): return false
 	var evaluated = scene.sample(time)
 	validated_state = evaluated
 	validated_time = time
@@ -227,7 +253,7 @@ func query_collision(a_id: int, b_id: int, include_penetration: bool = false) ->
 
 ## Physics-mode motion is an offset from the edited group pose. All edits restart history.
 func configure_body(id: int, body_type: String, initial_velocity: Vector4, motion: Dictionary = {}) -> bool:
-	if not Binding.configure(scene,physics,id,body_type,initial_velocity,motion):
+	if not Binding.configure(scene,physics,id,body_type,initial_velocity,motion,playback.start):
 		error = Binding.configuration_error(scene,physics,id)
 		return false
 	initial_motion_tracks.erase(id)
@@ -247,7 +273,7 @@ func configure_kinematic(id: int) -> bool:
 	return configure_body(id,"kinematic",Vector4.ZERO,{"source":"tracks"})
 
 ## Transform tracks supply the initial pose; these expressions supply initial rates.
-## Physics owns mutable state afterward, including stored acceleration.
+## Physics owns mutable state afterward, including velocity and pending forces.
 func configure_dynamic_initial(id: int, expressions: Dictionary) -> bool:
 	var track := InitialMotion.new()
 	if not track.configure(expressions,playback.start):
@@ -255,7 +281,9 @@ func configure_dynamic_initial(id: int, expressions: Dictionary) -> bool:
 		return false
 	var values: Dictionary=track.sample(playback.start)
 	values.mass=physics.motion_settings.get(id,{}).get("mass",1.0)
-	if not Binding.configure(scene,physics,id,"dynamic",values.velocity,values):
+	values.restitution=physics.motion_settings.get(id,{}).get("restitution",0.0)
+	if physics.motion_settings.get(id,{}).has("local_mass_properties"): values.mass_properties=physics.motion_settings[id].local_mass_properties
+	if not Binding.configure(scene,physics,id,"dynamic",values.velocity,values,playback.start):
 		error=Binding.configuration_error(scene,physics,id)
 		return false
 	initial_motion_tracks[id]=track
@@ -275,7 +303,12 @@ func refresh_initial_motion(time: float, commit: bool = true) -> bool:
 		for id in evaluated:
 			var values: Dictionary=evaluated[id]
 			values.mass=physics.motion_settings.get(id,{}).get("mass",1.0)
+			values.restitution=physics.motion_settings.get(id,{}).get("restitution",0.0)
+			var local_properties: Dictionary=physics.motion_settings.get(id,{}).get("local_mass_properties",{}).duplicate(true)
+			var reference_properties:=physics.mass_properties(id)
+			if not reference_properties.is_empty(): values.mass_properties=reference_properties
 			physics.configure_body(id,"dynamic",values.velocity,values)
+			if not local_properties.is_empty(): physics.motion_settings[id].local_mass_properties=local_properties
 	return true
 
 ## Runtime inputs branch recorded history; reset discards these inputs, restoring launch state.
@@ -324,3 +357,107 @@ func evaluate_contacts(evaluated: Dictionary, time: float) -> Array[Dictionary]:
 	var reports := physics.query_contacts(Binding.colliders(scene,physics,evaluated),contact_options)
 	contacts_evaluated.emit(time,reports.duplicate(true))
 	return reports
+
+## Adapter callbacks keep physics independent of hierarchy and transform tracks.
+func correction_colliders() -> Dictionary:
+	if not sync_dynamic(): return {}
+	var evaluated = scene.sample(correction_time)
+	return {} if evaluated==null else Binding.colliders(scene,physics,evaluated)
+
+func correct_positions(displacements: Dictionary) -> bool:
+	var evaluated = scene.sample(correction_time)
+	if evaluated==null: return false
+	var local := {}
+	for id in displacements:
+		if physics.body_types.get(id)!="dynamic": continue
+		var delta: Vector4=displacements[id]
+		if not physics.motion_settings.has(id):
+			# Legacy make_dynamic stores position in parent * offset coordinates.
+			var entry: Dictionary=scene.entries[id]
+			var math4d=preload("res://scripts/core/math/transform_4d.gd")
+			var graph=preload("res://scripts/core/scene/transform_graph_4d.gd")
+			var inverse=graph.inverse(math4d.multiply(evaluated[entry.parent].world,entry.offset))
+			if inverse.is_empty(): return false
+			delta=math4d.apply(inverse,delta,0.0)
+		local[id]=delta
+	return physics.translate_bodies(local)
+
+## Track-driven transforms are retained for material-point backward differences.
+## Center velocities remain the fallback when witnesses or inverse transforms are unavailable.
+func prepare_contact_velocities(current: Dictionary, time: float) -> void:
+	prescribed_contact_velocities.clear()
+	prescribed_contact_frames.clear()
+	var previous: Variant=null
+	for id in physics.body_types:
+		var driven: bool=physics.motion_settings.get(id,{}).get("source","rates")=="tracks"
+		var inherited_static: bool=physics.body_types[id]=="static" and scene.entries[id].parent!=0
+		if not driven and not inherited_static: continue
+		if previous==null:
+			# The recorder's last frame is the actual previous physics step, even during long seeks.
+			var current_bodies=physics.snapshot()
+			if not recording.frames.is_empty(): physics.restore(recording.frames.back())
+			sync_dynamic()
+			previous=scene.sample(time-Recording.STEP)
+			physics.restore(current_bodies)
+			sync_dynamic()
+		if previous==null: continue
+		var leaf: int=scene.objects[id].leaf_id
+		prescribed_contact_frames[id]={"current":current[leaf].world,"previous":previous[leaf].world}
+		var center:=Vector4.ZERO
+		var vertices=scene.objects[id].geometry.vertices
+		for vertex in vertices: center+=vertex
+		if not vertices.is_empty(): center/=vertices.size()
+		var math4d=preload("res://scripts/core/math/transform_4d.gd")
+		prescribed_contact_velocities[id]=(math4d.apply(current[leaf].world,center)-math4d.apply(previous[leaf].world,center))/Recording.STEP
+
+func contact_velocity(id: int) -> Vector4:
+	if prescribed_contact_velocities.has(id): return prescribed_contact_velocities[id]
+	var velocity:=physics.linear_velocity(id)
+	if not physics.motion_settings.has(id):
+		var evaluated=scene.sample(correction_time)
+		var entry: Dictionary=scene.entries[id]
+		var math4d=preload("res://scripts/core/math/transform_4d.gd")
+		velocity=math4d.apply(math4d.multiply(evaluated[entry.parent].world,entry.offset),velocity,0.0)
+	return velocity
+
+func contact_impulses(impulses: Dictionary) -> bool:
+	var local:=impulses.duplicate()
+	for id in local:
+		if physics.body_types.get(id)!="dynamic" or physics.motion_settings.has(id): continue
+		var evaluated=scene.sample(correction_time)
+		if evaluated==null: return false
+		var entry: Dictionary=scene.entries[id]
+		var math4d=preload("res://scripts/core/math/transform_4d.gd")
+		var graph=preload("res://scripts/core/scene/transform_graph_4d.gd")
+		var inverse=graph.inverse(math4d.multiply(evaluated[entry.parent].world,entry.offset))
+		if inverse.is_empty(): return false
+		local[id]=math4d.apply(inverse,local[id],0.0)
+	return physics.apply_contact_impulses(local)
+
+## Track-driven contacts use motion of the same material point, including rotation/scale.
+func contact_point_velocity(id: int, point: Vector4) -> Vector4:
+	if prescribed_contact_frames.has(id):
+		var frame: Dictionary=prescribed_contact_frames[id]
+		var graph=preload("res://scripts/core/scene/transform_graph_4d.gd")
+		var math4d=preload("res://scripts/core/math/transform_4d.gd")
+		var inverse=graph.inverse(frame.current)
+		if not inverse.is_empty():
+			var local=math4d.apply(inverse,point)
+			return (point-math4d.apply(frame.previous,local))/Recording.STEP
+		return contact_velocity(id) # Singular transform: center-motion fallback.
+	return contact_velocity(id)+physics.angular_point_velocity(id,point)
+
+func contact_point_impulses(entries: Dictionary) -> bool:
+	var local:=entries.duplicate(true)
+	for id in local:
+		if physics.body_types.get(id)!="dynamic" or physics.motion_settings.has(id): continue
+		# Legacy parent-relative bodies have no inertia; only translate their linear impulse.
+		var evaluated=scene.sample(correction_time)
+		if evaluated==null: return false
+		var entry: Dictionary=scene.entries[id]
+		var math4d=preload("res://scripts/core/math/transform_4d.gd")
+		var graph=preload("res://scripts/core/scene/transform_graph_4d.gd")
+		var inverse=graph.inverse(math4d.multiply(evaluated[entry.parent].world,entry.offset))
+		if inverse.is_empty(): return false
+		local[id].impulse=math4d.apply(inverse,local[id].impulse,0.0)
+	return physics.apply_point_impulses(local)

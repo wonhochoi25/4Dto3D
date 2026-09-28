@@ -8,6 +8,8 @@ func check(ok: bool,label: String):
 func _initialize(): call_deferred("verify")
 func verify():
 	var session := Session.new()
+	session.overlap_correction_enabled=false
+	session.collision_impulses_enabled=false
 	var parent := session.add_geometry(Box.new(),{}, {"position":{"W":"t"},"rotation":{"XY":"30*t"},"scale":"1+t"})
 	session.configure_kinematic(parent)
 	var child := session.add_geometry(Box.new(),{"position":{"X":"2+t"}}, {"position":{"Y":"3+t"}})

@@ -11,6 +11,8 @@ func check(ok: bool,label: String):
 	if not ok: failures+=1; push_error(label)
 func _initialize():
 	var s:=Session.new()
+	s.overlap_correction_enabled=false
+	s.collision_impulses_enabled=false
 	var a:=s.add_geometry(Box.new())
 	var b:=s.add_geometry(Box.new(),{"position":{"W":2.1}})
 	s.configure_body(a,"dynamic",Vector4(0,0,0,6))

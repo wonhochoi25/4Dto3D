@@ -89,7 +89,7 @@ Object IDs returned by `add_geometry` identify groups. Leaf IDs in `scene.object
 
 Simulation validation does not project geometry and cannot be invalidated by a rendering expression. Projection failures are presentation errors: the sandbox pauses and retains the last rendered geometry. Projection settings and appearance never enter recorded physics state.
 
-The packed state contains position, velocity, orientation, angular velocity, elapsed time, mass, and pending force (see PHYSICS.md for layout). Scene evaluation uses body motion. Central forces, impulses, and global 4D gravity are implemented; collision queries remain read-only and collision response is not implemented. Snapshot dictionaries are adequate for this sandbox; this is not a production physics engine.
+The packed state contains position, velocity, orientation, angular velocity, elapsed time, mass, and pending force (see PHYSICS.md for layout). Scene evaluation uses body motion. Central forces, impulses, and global 4D gravity are implemented; collision queries remain read-only while separate solvers apply position correction and linear/angular impulses. Snapshot dictionaries are adequate for this sandbox; this is not a production physics engine.
 
 ## Sandbox adapters
 
@@ -214,3 +214,52 @@ body pairs containing a dynamic body. The scene binding supplies collider descri
 physics/contact_queries_4d.gd owns pair selection and calls the replaceable backend.
 Results are exposed through contact_reports and contacts_evaluated, without response.
 Replay re-evaluates contacts from restored poses; snapshots remain motion-only.
+
+
+### Position correction
+
+`physics/overlap_solver_4d.gd` consumes the collision backend contract and splits
+penetration corrections by inverse mass. It is outside the replaceable algorithm
+folder. World exposes `resolve_overlaps`; hosts supply fresh collider transforms.
+Session adapts the scene, solves new steps before recording, and publishes final
+contact reports. Playback restores snapshots without solving again. No UI or file
+loader is needed, and the integrator remains independently callable.
+
+
+### Linear contact impulses
+
+`physics/impulse_solver_4d.gd` consumes generic contact reports and modifies only
+dynamic linear velocities. It has no GJK/EPA, scene, UI or IO dependency. World
+exposes `resolve_impulses`; Session supplies prescribed-motion velocities and runs
+it before positional correction and snapshot capture. Restitution is body
+configuration. Angular response is described below; friction remains a future extension.
+
+
+### Resting contacts
+
+The impulse module builds temporary normal constraints and iterates accumulated
+nonnegative impulses within each step. Restitution targets are fixed at construction;
+near-contact targets use certified gap/dt. No inter-step cache or UI dependency is
+introduced. Session passes fixed-step settings, while standalone hosts pass dt.
+Position correction remains separate from the velocity constraints.
+
+
+### Mass properties
+
+`physics/mass_properties_4d.gd` owns center-of-mass/central-moment validation,
+uniform-box formulas, affine distribution transforms, and full six-plane inertia.
+World owns the reference distribution and exposes world-frame properties. Body
+pose construction rotates about COM; linear offsets and recorded state layout remain
+compatible. The scene binding converts shape-local properties through starting
+transforms, keeping all scene/UI assumptions out of the physics module. Angular
+contact solving consumes this data from a separate response module.
+
+
+### Angular contact response
+
+`physics/angular_response_4d.gd` owns six-plane moment and surface-velocity algebra.
+The normal constraint solver uses contact witnesses, world inertia and point
+velocities; World applies atomic linear/angular impulses. Session adapts prescribed
+material-point motion and legacy local frames. The collision backend contract stays
+algorithm-independent. Single-point contacts remain separate from future manifolds
+and friction, and no UI is required.

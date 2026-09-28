@@ -14,8 +14,12 @@ func verify():
 	for p in data.vertices: shape.vertices.append(Vector4(p[0],p[1],p[2],p[3]))
 	var settings: Dictionary=data.procedural_defaults
 	var reference := Session.new()
+	reference.overlap_correction_enabled=false
+	reference.collision_impulses_enabled=false
 	var expected_id := reference.add_geometry(shape,settings.geometry,settings.group)
 	var session := Session.new()
+	session.overlap_correction_enabled=false
+	session.collision_impulses_enabled=false
 	var id := session.add_geometry(shape,settings.geometry,settings.group)
 	check(session.configure_kinematic(id),"Configure tracks")
 	var dynamic := session.add_geometry(Box.new())

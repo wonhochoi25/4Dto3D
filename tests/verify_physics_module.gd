@@ -42,5 +42,18 @@ func _initialize():
 	check(result.status=="intersecting" and absf(result.penetration.depth-1)<1e-4,"Standalone collision/EPA")
 	world.collision_backend=Probe
 	check(world.query_collision(a,b).reason.contains("probe"),"Independent backend replacement")
+	world.configure_body(1,"dynamic",Vector4(0,0,0,2),{"restitution":1.0})
+	world.configure_body(2,"static",Vector4.ZERO)
+	world.resolve_impulses([{"body_a":1,"body_b":2,"result":result}])
+	check(absf(world.linear_velocity(1).w+2)<0.0001,"Isolated backend-neutral collision impulse")
+	var mass=preload("res://scripts/core/physics/mass_properties_4d.gd")
+	check(world.configure_body(5,"dynamic",Vector4.ZERO,{"mass_properties":mass.uniform_box(1,Vector4(2,2,2,2),Vector4(3,0,0,0)),"angular_velocity":[90,0,0,0,0,0]}),"Isolated mass properties")
+	world.set_gravity(Vector4.ZERO)
+	world.step(1)
+	check((Math4D.apply(world.matrices()[5],Vector4(3,0,0,0))-Vector4(3,0,0,0)).length()<0.00001,"Isolated COM pivot")
+	check(absf(world.mass_properties(5).inertia[0]-2.0/3)<0.00001,"Isolated tesseract inertia")
+	var prior_angular: float=world.bodies[5][24]
+	world.apply_point_impulses({5:{"impulse":Vector4(0,1,0,0),"point":Vector4(4,0,0,0)}})
+	check(absf(world.bodies[5][24]-prior_angular-rad_to_deg(1.5))<0.0001,"Isolated off-center impulse")
 	print("Physics module failures: ",failures)
 	quit(1 if failures else 0)

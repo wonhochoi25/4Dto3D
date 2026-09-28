@@ -71,7 +71,7 @@ On an `intersecting` result, `penetration` may contain:
 - Optional `point_a`, `point_b`: world-space witnesses supplied together. For a converged estimate their difference approximately equals `translation_b` when it is supplied.
 - Optional `tolerance`: nonnegative world-space tolerance.
 
-Only report usable penetration measurements when `converged` is true. Unresolved results retain the outer detection status. An omitted penetration result means no estimate is available, even if requested. Zero depth is actual touching within tolerance, never an unavailable estimate. Translation is a geometric estimate, not an impulse or velocity, and no caller automatically applies it. Minimum directions can be nonunique.
+Only report usable penetration measurements when `converged` is true. Unresolved results retain the outer detection status. An omitted penetration result means no estimate is available, even if requested. Zero depth is actual touching within tolerance, never an unavailable estimate. Translation is a geometric estimate, not an impulse or velocity, and the optional core overlap solver applies it only to dynamic positions. Minimum directions can be nonunique.
 
 ## Optional diagnostics
 
@@ -88,3 +88,9 @@ python3 tools/verify_collision_backend_swap.py /Applications/Godot.app/Contents/
 ```
 
 This copies the project to a temporary directory, replaces only the backend entry with a detection-result test double, removes the GJK/EPA/support/simplex files from that copy, and exercises the session and inspector. The double checks plumbing, not physical collision correctness. A new real backend needs its own mathematical correctness tests in addition to this contract integration test.
+
+
+Angular response consumes finite world-space `point_a`/`point_b` witnesses when
+available, using their midpoint as a shared contact location. Missing or invalid
+witnesses fall back to linear response; backends remain valid without them. No
+algorithm-specific simplex or EPA internals are consumed by the response solver.
