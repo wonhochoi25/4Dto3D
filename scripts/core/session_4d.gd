@@ -10,6 +10,11 @@ var validated_contacts: Array[Dictionary]=[]
 ## Configuration changes require invalidate() to restart recorded history.
 var collision_impulses_enabled := true
 var impulse_result: Dictionary = {}
+var fast_motion_enabled:=true
+var max_motion_substeps:=256
+var last_motion_substeps:=1
+var contact_dt:=Recording.STEP
+var contact_previous_bodies: Dictionary={}
 var impulse_options: Dictionary = {"iterations":32,"contact_margin":0.005,"bounce_threshold":1.0,"velocity_tolerance":0.000001}
 var prescribed_contact_velocities: Dictionary = {}
 var prescribed_contact_frames: Dictionary = {}
@@ -17,7 +22,7 @@ var overlap_correction_enabled := true
 var overlap_options: Dictionary = {"slop":0.0001,"iterations":8}
 var overlap_result: Dictionary = {}
 var correction_time := 0.0
-var contact_options: Dictionary={"include_penetration":true}
+var contact_options: Dictionary={"include_penetration":true,"broad_phase":true}
 const Scene = preload("res://scripts/core/scene/scene_4d.gd")
 const Recording = preload("res://scripts/core/playback/simulation_recording.gd")
 const Playback = preload("res://scripts/core/playback/playback_4d.gd")
@@ -116,31 +121,63 @@ func sync_dynamic() -> bool:
 	return physics_binding.sync(scene,physics,playback.start)
 
 func validate_step(time: float) -> bool:
-	if not sync_dynamic():
-		error = scene.error
-		return false
-	# Preserve authored starting poses; response begins on the first simulated step.
-	overlap_result={}
-	impulse_result={}
+	if not sync_dynamic(): error=scene.error;return false
+	last_motion_substeps=1
+	if time>playback.start and physics.bodies.size()>1 and fast_motion_enabled:
+		var predicted=scene.sample(time)
+		if predicted==null: return false
+		var end_bodies:=physics.snapshot()
+		var start_bodies: Dictionary=recording.frames.back()
+		physics.restore(start_bodies)
+		sync_dynamic()
+		var previous=scene.sample(time-Recording.STEP)
+		if previous==null: physics.restore(end_bodies);return false
+		last_motion_substeps=preload("res://scripts/core/physics/motion_substeps_4d.gd").required(Binding.colliders(scene,physics,previous),Binding.colliders(scene,physics,predicted),physics.body_types,0.2,end_bodies,Recording.STEP)
+		if last_motion_substeps>max_motion_substeps:
+			error="Fast motion requires %d substeps (limit %d); reduce timestep/speed or raise limit" % [last_motion_substeps,max_motion_substeps]
+			return false
+		if last_motion_substeps>1:
+			var dt:=Recording.STEP/last_motion_substeps
+			for step in range(last_motion_substeps):
+				contact_previous_bodies=physics.snapshot()
+				# A per-frame force/torque acts throughout the subdivided interval.
+				for id in physics.bodies:
+					for index in range(42,52): physics.bodies[id][index]=start_bodies[id][index]
+				physics.step(dt)
+				if not solve_contacts(time-Recording.STEP+(step+1)*dt,dt): return false
+		else:
+			physics.restore(end_bodies)
+			contact_previous_bodies=start_bodies
+			if not solve_contacts(time,Recording.STEP): return false
+	else:
+		contact_previous_bodies=recording.frames.back() if not recording.frames.is_empty() else {}
+		if not solve_contacts(time,Recording.STEP): return false
+	if not sync_dynamic(): return false
+	var evaluated=scene.sample(time)
+	validated_state=evaluated;validated_time=time
+	if evaluated==null: error=scene.error;return false
+	validated_contacts=evaluate_contacts(evaluated,time)
+	return true
+
+## One core response substep. Only the accepted macro step is recorded/published.
+func solve_contacts(time: float,dt: float) -> bool:
+	if not sync_dynamic(): error=scene.error;return false
+	contact_dt=dt
+	overlap_result={};impulse_result={}
+	var reports: Array=[]
 	if collision_impulses_enabled and time>playback.start and physics.bodies.size()>1:
 		correction_time=time
 		var before=scene.sample(time)
 		if before==null: return false
 		prepare_contact_velocities(before,time)
-		var reports=physics.query_contacts(Binding.colliders(scene,physics,before),{"include_penetration":true})
-		var options:=impulse_options.duplicate()
-		options.dt=Recording.STEP
+		reports=physics.query_contacts(Binding.colliders(scene,physics,before),{"include_penetration":true,"include_manifold":true,"broad_phase":true})
+		var options:=impulse_options.duplicate();options.dt=dt
 		impulse_result=physics.resolve_impulses(reports,contact_velocity,contact_impulses,options,contact_point_velocity,contact_point_impulses)
 	if overlap_correction_enabled and time>playback.start and physics.bodies.size()>1:
 		correction_time=time
 		overlap_result=physics.resolve_overlaps(correction_colliders,overlap_options,correct_positions)
-		if not sync_dynamic(): return false
-	var evaluated = scene.sample(time)
-	validated_state = evaluated
-	validated_time = time
-	if evaluated == null: error = scene.error
-	else: validated_contacts = evaluate_contacts(evaluated,time)
-	return evaluated != null
+	if time>playback.start: physics.finish_step(reports,dt)
+	return true
 
 func invalidate() -> void:
 	if not refresh_initial_motion(playback.start):
@@ -281,6 +318,7 @@ func configure_dynamic_initial(id: int, expressions: Dictionary) -> bool:
 		return false
 	var values: Dictionary=track.sample(playback.start)
 	values.mass=physics.motion_settings.get(id,{}).get("mass",1.0)
+	values.friction=physics.motion_settings.get(id,{}).get("friction",0.0)
 	values.restitution=physics.motion_settings.get(id,{}).get("restitution",0.0)
 	if physics.motion_settings.get(id,{}).has("local_mass_properties"): values.mass_properties=physics.motion_settings[id].local_mass_properties
 	if not Binding.configure(scene,physics,id,"dynamic",values.velocity,values,playback.start):
@@ -303,6 +341,7 @@ func refresh_initial_motion(time: float, commit: bool = true) -> bool:
 		for id in evaluated:
 			var values: Dictionary=evaluated[id]
 			values.mass=physics.motion_settings.get(id,{}).get("mass",1.0)
+			values.friction=physics.motion_settings.get(id,{}).get("friction",0.0)
 			values.restitution=physics.motion_settings.get(id,{}).get("restitution",0.0)
 			var local_properties: Dictionary=physics.motion_settings.get(id,{}).get("local_mass_properties",{}).duplicate(true)
 			var reference_properties:=physics.mass_properties(id)
@@ -395,9 +434,9 @@ func prepare_contact_velocities(current: Dictionary, time: float) -> void:
 		if previous==null:
 			# The recorder's last frame is the actual previous physics step, even during long seeks.
 			var current_bodies=physics.snapshot()
-			if not recording.frames.is_empty(): physics.restore(recording.frames.back())
+			if not contact_previous_bodies.is_empty(): physics.restore(contact_previous_bodies)
 			sync_dynamic()
-			previous=scene.sample(time-Recording.STEP)
+			previous=scene.sample(time-contact_dt)
 			physics.restore(current_bodies)
 			sync_dynamic()
 		if previous==null: continue
@@ -408,7 +447,7 @@ func prepare_contact_velocities(current: Dictionary, time: float) -> void:
 		for vertex in vertices: center+=vertex
 		if not vertices.is_empty(): center/=vertices.size()
 		var math4d=preload("res://scripts/core/math/transform_4d.gd")
-		prescribed_contact_velocities[id]=(math4d.apply(current[leaf].world,center)-math4d.apply(previous[leaf].world,center))/Recording.STEP
+		prescribed_contact_velocities[id]=(math4d.apply(current[leaf].world,center)-math4d.apply(previous[leaf].world,center))/contact_dt
 
 func contact_velocity(id: int) -> Vector4:
 	if prescribed_contact_velocities.has(id): return prescribed_contact_velocities[id]
@@ -443,7 +482,7 @@ func contact_point_velocity(id: int, point: Vector4) -> Vector4:
 		var inverse=graph.inverse(frame.current)
 		if not inverse.is_empty():
 			var local=math4d.apply(inverse,point)
-			return (point-math4d.apply(frame.previous,local))/Recording.STEP
+			return (point-math4d.apply(frame.previous,local))/contact_dt
 		return contact_velocity(id) # Singular transform: center-motion fallback.
 	return contact_velocity(id)+physics.angular_point_velocity(id,point)
 
@@ -461,3 +500,16 @@ func contact_point_impulses(entries: Dictionary) -> bool:
 		if inverse.is_empty(): return false
 		local[id].impulse=math4d.apply(inverse,local[id].impulse,0.0)
 	return physics.apply_point_impulses(local)
+
+## Runtime torque inputs branch recorded history, exactly like central forces.
+func apply_torque(id: int, torque: PackedFloat64Array) -> bool:
+	if pending_seek!=null: return false
+	if not physics.apply_torque(id,torque): error=physics.error;return false
+	recording.commit_current()
+	return true
+
+func apply_force_at_point(id: int, force: Vector4, point: Vector4) -> bool:
+	if pending_seek!=null: return false
+	if not physics.apply_force_at_point(id,force,point): error=physics.error;return false
+	recording.commit_current()
+	return true

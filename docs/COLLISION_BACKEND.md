@@ -1,6 +1,6 @@
 # Replaceable collision backend contract
 
-Collision detection is behind a general backend. **You can exchange the default backend for other collision checks that implement the input and output structure below, without changing the session, inspector, transforms, playback, or rendering.** GJK and EPA are the default implementation, not a requirement of the interface.
+Collision detection is behind a general backend. **You can exchange the default backend for other collision checks that implement the input and output structure below, without changing the session, inspector, transforms, playback, or rendering.** The default implementation uses affine-box SAT and otherwise GJK/EPA; none is a requirement of the interface.
 
 ## Replace the backend
 
@@ -79,7 +79,7 @@ Only report usable penetration measurements when `converged` is true. Unresolved
 
 ## Default implementation and verification
 
-The default entry adapts GJK + optional EPA to this contract. It uses `convex_vertices_4d.gd`, `gjk_4d.gd`, `simplex_4d.gd`, and `epa_4d.gd` internally. These can be removed if a replacement no longer imports them. Tests dedicated to GJK/EPA naturally still need those algorithms; production session and inspector do not.
+The default entry adapts affine-box SAT or GJK + optional EPA to this contract. It uses `box_sat_4d.gd`, `convex_vertices_4d.gd`, `gjk_4d.gd`, `simplex_4d.gd`, and `epa_4d.gd` internally. These can be removed if a replacement no longer imports them. Tests dedicated to GJK/EPA naturally still need those algorithms; production session and inspector do not.
 
 Run `tests/verify_collision_backend.gd` for minimal-result, optional-field, read-only, and backend-injection coverage. Run:
 
@@ -94,3 +94,16 @@ Angular response consumes finite world-space `point_a`/`point_b` witnesses when
 available, using their midpoint as a shared contact location. Missing or invalid
 witnesses fall back to linear response; backends remain valid without them. No
 algorithm-specific simplex or EPA internals are consumed by the response solver.
+
+
+World can enrich reports with `contacts: Array[Vector4]` through the independent
+box-manifold module when `include_manifold` is requested. These shared world contact
+points are consumed by the response solver; replacement backends do not need to
+produce them. Manifold generation requires a valid detection/normal result, never
+turns an indeterminate result into a collision, and retains witness fallback for
+non-box shapes. `broad_phase` is likewise a World query option, not a required
+backend implementation feature.
+
+SAT separation's `distance_lower` is the certified interval gap and `distance` is
+a witness-based upper bound, which can be loose. It is not presented as converged
+closest-point distance unless the bounds actually coincide.

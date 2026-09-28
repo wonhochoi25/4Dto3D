@@ -9,16 +9,24 @@ const Body = preload("res://scripts/core/physics/body_4d.gd")
 const Integrator = preload("res://scripts/core/physics/integrator_4d.gd")
 var collision_backend = preload("res://scripts/core/physics/collision/collision_backend.gd")
 var motion_settings: Dictionary = {}
+var sleeping_enabled:=true
+var sleep_delay:=0.5
+var sleep_speed:=0.01
+var sleep_angular_speed:=0.5
 var error := ""
+var inertia_cache: Dictionary={}
 var gravity := Vector4.ZERO:
 	set(value):
-		if value.is_finite(): gravity=value
+		if value.is_finite():
+			gravity=value
+			wake_all()
 		else: error="Gravity must be finite"
 var initial_bodies: Dictionary = {}
 var bodies: Dictionary = {}
 var body_types: Dictionary = {}
 
 func add_body(id: int, position: Vector4, velocity: Vector4, body_type: String = "dynamic") -> void:
+	inertia_cache.erase(id)
 	var state := Body.initial_state(position,velocity)
 	motion_settings.erase(id)
 	body_types[id] = body_type
@@ -34,17 +42,23 @@ func snapshot() -> Dictionary:
 	return result
 
 func restore(state: Dictionary) -> void:
+	inertia_cache.clear()
 	bodies.clear()
 	for id in state: bodies[id] = state[id].duplicate()
 
 func step(dt: float) -> void:
+	inertia_cache.clear()
 	if not is_finite(dt) or dt <= 0:
 		error="Step duration must be finite and positive"
 		return
 	for id in bodies:
 		# External pose drivers are sampled by the host scene adapter, never integrated twice.
 		if motion_settings.get(id,{}).get("source", "rates") == "tracks": continue
-		bodies[id] = Integrator.step_state(bodies[id],initial_bodies[id],body_types.get(id,"dynamic"),dt,gravity)
+		if not sleeping_enabled and bodies[id][53]>0: wake(id)
+		if bodies[id][53]>0:
+			bodies[id][40]+=dt
+			continue
+		bodies[id] = Integrator.step_state(bodies[id],initial_bodies[id],body_types.get(id,"dynamic"),dt,gravity,mass_properties(id))
 
 func remove_body(id: int) -> void:
 	motion_settings.erase(id)
@@ -78,6 +92,10 @@ func configure_body(id: int, body_type: String, velocity: Vector4, motion: Dicti
 		if value != 0:
 			error="Angular acceleration is not supported; continuous torque integration comes later"
 			return false
+	var friction=motion.get("friction",0.0)
+	if not (friction is int or friction is float) or not is_finite(friction) or friction<0:
+		error="Friction must be finite and nonnegative"
+		return false
 	var restitution = motion.get("restitution",0.0)
 	if not (restitution is float or restitution is int) or not is_finite(restitution) or restitution<0 or restitution>1:
 		error="Restitution must be between zero and one"
@@ -104,7 +122,7 @@ func configure_body(id: int, body_type: String, velocity: Vector4, motion: Dicti
 		for plane in range(6): state[24+plane]=angular[plane]
 	initial_bodies[id]=state
 	bodies[id]=state.duplicate()
-	motion_settings[id] = {"type":body_type,"source":source,"restitution":float(restitution),"mass":float(mass),"velocity":velocity,"acceleration":acceleration,
+	motion_settings[id] = {"type":body_type,"source":source,"restitution":float(restitution),"friction":float(friction),"mass":float(mass),"velocity":velocity,"acceleration":acceleration,
 		"angular_velocity":PackedFloat64Array(angular),"angular_acceleration":PackedFloat64Array(alpha)}
 	if not mass_properties.is_empty(): motion_settings[id].mass_properties=mass_properties
 	return true
@@ -135,6 +153,7 @@ func set_gravity(value: Vector4) -> bool:
 		error="Gravity must be finite"
 		return false
 	gravity=value
+	wake_all()
 	error=""
 	return true
 
@@ -158,6 +177,7 @@ func apply_force(id: int, force: Vector4) -> bool:
 			error="Force accumulation overflow"
 			return false
 	bodies[id]=state
+	wake(id)
 	return true
 
 ## Instantaneous central impulse: delta velocity = impulse / mass, independent of dt.
@@ -170,6 +190,7 @@ func apply_impulse(id: int, impulse: Vector4) -> bool:
 			error="Impulse overflow"
 			return false
 	bodies[id]=state
+	wake(id)
 	return true
 
 ## Host may vary these prescribed rates before each step. Dynamics cannot use this API.
@@ -185,12 +206,15 @@ func set_kinematic_velocity(id: int, velocity: Vector4, angular: PackedFloat64Ar
 	for axis in range(4): state[4+axis]=velocity[axis]
 	for plane in range(6): state[24+plane]=angular[plane]
 	bodies[id]=state
+	wake(id)
 	return true
 
 ## Host supplies evaluated local geometry/world matrices after stepping and hierarchy evaluation.
 ## Keeps physics independent of scene ownership, projection, and JSON loading.
 func query_contacts(colliders: Dictionary, options: Dictionary = {"include_penetration":true}) -> Array[Dictionary]:
-	return preload("res://scripts/core/physics/contact_queries_4d.gd").query(body_types,colliders,collision_backend,options)
+	var reports=preload("res://scripts/core/physics/contact_queries_4d.gd").query(body_types,colliders,collision_backend,options)
+	if options.get("include_manifold",false): preload("res://scripts/core/physics/contact_manifold_4d.gd").attach(reports,colliders)
+	return reports
 
 ## Caller supplies fresh world-space colliders. Default body translations are world-space.
 ## A scene adapter can supply a pair translator for parent-relative body coordinates.
@@ -209,6 +233,8 @@ func translate_bodies(displacements: Dictionary) -> bool:
 		for axis in range(4):
 			next[axis]+=delta[axis]
 			if not is_finite(next[axis]): return false
+		if bodies[id][53]>0 and (next.slice(0,8)!=bodies[id].slice(0,8) or next.slice(24,30)!=bodies[id].slice(24,30)):
+			next[52]=0;next[53]=0
 		updates[id]=next
 	for id in updates: bodies[id]=updates[id]
 	return not updates.is_empty()
@@ -238,6 +264,8 @@ func apply_contact_impulses(impulses: Dictionary) -> bool:
 		for axis in range(4):
 			next[4+axis]+=impulse[axis]/next[41]
 			if not is_finite(next[4+axis]): return false
+		if bodies[id][53]>0 and (next.slice(0,8)!=bodies[id].slice(0,8) or next.slice(24,30)!=bodies[id].slice(24,30)):
+			next[52]=0;next[53]=0
 		updates[id]=next
 	for id in updates: bodies[id]=updates[id]
 	return not updates.is_empty()
@@ -264,10 +292,12 @@ func inverse_inertia_world(id: int) -> PackedFloat64Array:
 		var zero:=PackedFloat64Array()
 		zero.resize(36)
 		return zero
-	return world_mass_properties(id).get("inverse_inertia",PackedFloat64Array())
+	if not inertia_cache.has(id): inertia_cache[id]=world_mass_properties(id).get("inverse_inertia",PackedFloat64Array())
+	return inertia_cache[id]
 
 ## Configuration update, not a runtime force: hosts must reset recorded history afterward.
 func set_mass_properties(id: int, properties: Dictionary) -> bool:
+	inertia_cache.erase(id)
 	if not bodies.has(id):
 		error="Unknown body ID"
 		return false
@@ -286,7 +316,7 @@ func set_mass_properties(id: int, properties: Dictionary) -> bool:
 ## Spin contribution at a world point. Unconfigured dynamic inertia retains linear-only response.
 func angular_point_velocity(id: int, point: Vector4) -> Vector4:
 	if not bodies.has(id) or body_types.get(id)=="static": return Vector4.ZERO
-	if body_types.get(id)=="dynamic" and mass_properties(id).is_empty(): return Vector4.ZERO
+	if body_types.get(id)=="dynamic" and not motion_settings.get(id,{}).has("mass_properties"): return Vector4.ZERO
 	var omega:=PackedFloat64Array()
 	for i in range(6): omega.append(deg_to_rad(bodies[id][24+i]))
 	return Angular.surface_velocity(point-center_of_mass(id),omega)
@@ -316,6 +346,58 @@ func apply_point_impulses(entries: Dictionary) -> bool:
 		for plane in range(6):
 			next[24+plane]+=rad_to_deg(delta[plane])
 			if not is_finite(next[24+plane]): return false
+		if bodies[id][53]>0 and (next.slice(0,8)!=bodies[id].slice(0,8) or next.slice(24,30)!=bodies[id].slice(24,30)):
+			next[52]=0;next[53]=0
 		updates[id]=next
 	for id in updates: bodies[id]=updates[id]
 	return not updates.is_empty()
+
+## World-plane torque (force*length), accumulated for one step; angular units are radians.
+func apply_torque(id: int, torque: PackedFloat64Array) -> bool:
+	if not dynamic_input(id,Vector4.ZERO) or not valid_planes(torque) or mass_properties(id).is_empty():
+		error="Torque requires a dynamic body with inertia and six finite components"
+		return false
+	var next: PackedFloat64Array=bodies[id].duplicate()
+	for i in range(6):
+		next[46+i]+=torque[i]
+		if not is_finite(next[46+i]): return false
+	bodies[id]=next
+	wake(id)
+	return true
+
+func apply_force_at_point(id: int, force: Vector4, point: Vector4) -> bool:
+	if not point.is_finite() or not dynamic_input(id,force) or mass_properties(id).is_empty(): return false
+	var before: PackedFloat64Array=bodies[id].duplicate()
+	if not apply_force(id,force) or not apply_torque(id,Angular.moment(point-center_of_mass(id),force)):
+		bodies[id]=before
+		return false
+	return true
+
+func wake(id: int) -> void:
+	if not bodies.has(id): return
+	bodies[id][52]=0;bodies[id][53]=0
+func wake_all() -> void:
+	for id in bodies: wake(id)
+func is_sleeping(id: int) -> bool:
+	return bodies.has(id) and bodies[id][53]>0
+
+## Called after contact solving, not after free integration. Sleep state is recorded.
+func finish_step(reports: Array,dt: float) -> void:
+	var supported: Dictionary={}
+	for report in reports:
+		if report.result.get("status")=="intersecting" or report.result.get("gap",INF)<=0.005:
+			supported[report.body_a]=true;supported[report.body_b]=true
+	for id in bodies:
+		if body_types[id]!="dynamic": continue
+		if not sleeping_enabled: wake(id);continue
+		var body: PackedFloat64Array=bodies[id].duplicate()
+		var quiet: bool=linear_velocity(id).length()<=sleep_speed
+		for i in range(6): quiet=quiet and absf(body[24+i])<=sleep_angular_speed
+		if not quiet or (gravity.length_squared()>0 and not supported.has(id)):
+			wake(id);continue
+		body[52]+=dt
+		if body[52]>=sleep_delay:
+			body[53]=1
+			for axis in range(4): body[4+axis]=0
+			for i in range(6): body[24+i]=0
+		bodies[id]=body

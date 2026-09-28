@@ -20,6 +20,8 @@ static func solve(world, colliders: Callable, translate: Callable, options: Dict
 				if wa+wb <= 0: continue
 				var inputs: Dictionary = colliders.call()
 				if not inputs.has(a) or not inputs.has(b): continue
+				var broad=preload("res://scripts/core/physics/broad_phase_4d.gd")
+				if not broad.overlap(broad.bounds(inputs[a]),broad.bounds(inputs[b])): continue
 				var result: Dictionary = world.query_collision(inputs[a],inputs[b],{"include_penetration":true})
 				var pen: Dictionary = result.get("penetration",{})
 				if result.get("status") != "intersecting" or pen.get("status") != "penetrating" or not pen.get("converged",false): continue

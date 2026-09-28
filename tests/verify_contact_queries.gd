@@ -11,6 +11,7 @@ func check(ok: bool,label: String):
 	if not ok: failures+=1; push_error(label)
 func _initialize():
 	var s:=Session.new()
+	s.contact_options={"include_penetration":true,"broad_phase":false}
 	s.overlap_correction_enabled=false
 	s.collision_impulses_enabled=false
 	var a:=s.add_geometry(Box.new())

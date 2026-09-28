@@ -7,6 +7,8 @@ const EPA = preload("res://scripts/core/physics/collision/epa_4d.gd")
 const Collider = preload("res://scripts/core/physics/collision/convex_vertices_4d.gd")
 
 static func query(a: Dictionary, b: Dictionary, options: Dictionary = {}) -> Dictionary:
+	var boxes=preload("res://scripts/core/physics/collision/box_sat_4d.gd").query(a,b,options)
+	if not boxes.is_empty(): return boxes
 	var ca = Collider.new(a.geometry.vertices,a.world)
 	var cb = Collider.new(b.geometry.vertices,b.world)
 	var raw := GJK.query(ca,cb)

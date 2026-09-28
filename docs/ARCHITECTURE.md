@@ -117,13 +117,13 @@ Call `session.query_collision(a_id, b_id)` with two public object IDs to query t
 
 Results are `separated`, `intersecting` (including contact within tolerance), or `indeterminate`. Separated results contain distance bounds, witness points, a separating direction, and intervals on that direction. A certified gap can establish separation even if the distance iteration stalls. `converged` describes distance convergence, not whether a separating certificate exists. Simplex difference points are normalized by the returned `simplex_scale`; their original support witnesses are retained. These are internal GJK results consumed by the default collision adapter and EPA; session queries expose only the standardized backend contract.
 
-Tolerance is `1e-7 + 1e-6 * max(radius_a + radius_b, 1e-12)`. Near contact is deliberately approximate. Empty/nonfinite input, exhausted iterations without a certificate, or numerical failure can return indeterminate. This implementation provides no broad phase, continuous collision detection, penetration depth, contact manifold, or response.
+Tolerance is `1e-7 + 1e-6 * max(radius_a + radius_b, 1e-12)`. Near contact is deliberately approximate. Empty/nonfinite input, exhausted iterations without a certificate, or numerical failure can return indeterminate. This GJK module only detects proximity; the physics pipeline now adds broad-phase filtering, penetration estimates, manifolds, response and bounded motion substeps in separate modules.
 
 The sandbox's collapsible collision inspector chooses two objects, displays the result and separating intervals, and applies a temporary edge highlight. Tests cover analytic box/sphere distances, W-only separation, containment, degeneracy, symmetry, common rotations, scale, and inspector integration.
 
 ### EPA penetration query
 
-`core/physics/collision/epa_4d.gd` estimates penetration after a GJK `intersecting` result. Call `session.query_collision(a_id, b_id, true)` to add a `penetration` dictionary to that result. The default query remains GJK-only. GJK status is preserved when EPA cannot resolve penetration.
+`core/physics/collision/epa_4d.gd` estimates penetration after a GJK `intersecting` result. Call `session.query_collision(a_id, b_id, true)` to add a `penetration` dictionary to that result. Non-box detection uses GJK; affine boxes use SAT. GJK status is preserved when EPA cannot resolve penetration.
 
 EPA reuses GJK witnesses, samples additional supports to seed a full-dimensional hull, and expands tetrahedral boundary facets through triangular horizons. Facet orientation uses a fixed interior point; expansion is transactional and verifies that each ridge belongs to two facets. The nearest boundary plane and its support plane bound depth. Coplanar tetrahedra are searched for barycentric witness recovery. Arithmetic is normalized by collider radii and uses packed doubles.
 
@@ -170,7 +170,7 @@ core/physics/
     epa_4d.gd
 ```
 
-No contact solver file exists yet: collision response is not implemented. Dynamic acceleration is computed from gravity plus accumulated force divided by mass. The integrator does not call detection. Collision queries can also be used independently of a physics world.
+Normal/angular constraints, friction and positional correction are implemented in separate physics solver modules. Dynamic acceleration is computed from gravity plus accumulated force divided by mass. The integrator does not call detection. Collision queries can also be used independently of a physics world.
 
 `Session.physics` owns the runtime instance. Session's existing body APIs delegate to it and handle recording invalidation; its `motion_settings` and `collision_backend` properties forward to physics for compatibility. The session does not index packed body state or implement integration. The scene adapter owns only hierarchy/PRSA conversion and the current World-only run restriction; those concepts do not leak into physics.
 
@@ -232,7 +232,7 @@ loader is needed, and the integrator remains independently callable.
 dynamic linear velocities. It has no GJK/EPA, scene, UI or IO dependency. World
 exposes `resolve_impulses`; Session supplies prescribed-motion velocities and runs
 it before positional correction and snapshot capture. Restitution is body
-configuration. Angular response is described below; friction remains a future extension.
+configuration. Angular response and friction are described below.
 
 
 ### Resting contacts
@@ -261,5 +261,28 @@ contact solving consumes this data from a separate response module.
 The normal constraint solver uses contact witnesses, world inertia and point
 velocities; World applies atomic linear/angular impulses. Session adapts prescribed
 material-point motion and legacy local frames. The collision backend contract stays
-algorithm-independent. Single-point contacts remain separate from future manifolds
-and friction, and no UI is required.
+algorithm-independent. Box manifolds and friction extend the response pipeline without UI dependencies.
+
+
+### Current manifold-to-motion pipeline
+
+See [PHYSICS.md](PHYSICS.md) for the consolidated API and limitations. New core
+modules separate affine-box contact manifolds, three-dimensional tangent friction,
+angular momentum integration, broad-phase bounds, and motion-substep budgeting.
+The default collision backend now uses box SAT where applicable and GJK/EPA otherwise;
+replacement still changes one backend entry. Manifold construction and response do
+not import the default collision algorithms.
+
+Session predicts macro motion, chooses bounded substeps, evaluates geometry and
+prescribed point motion, then runs candidate queries, manifold constraints, friction,
+positional correction and sleep updates. Only accepted macro frames are recorded.
+A rejected substep budget preserves the last accepted state. The generic recorder
+still knows nothing about physics. Standalone hosts can call these modules without
+Session; no UI or JSON loader is required.
+
+World snapshots now include pending torque and sleep state in slots 46..53. Pose
+integration conserves world angular momentum for configured inertia using a midpoint
+orientation estimate and matrix exponentials, with numerical energy error. The
+response solver caches inverse inertia only for the current pose. Sleeping is
+per-body, not island-based; fast motion is adaptive sampling, not exact TOI. Non-box
+manifolds and pathological glancing/oscillatory trajectories remain limitations.

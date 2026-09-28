@@ -67,7 +67,7 @@ func _initialize():
 	check(w.linear_velocity(1).x<0 and w.bodies[2][24]==90,"Rotating kinematic pushes body")
 	var s:=Session.new()
 	var a:=s.add_geometry(Box.new())
-	var b:=s.add_geometry(Box.new(),{"position":{"X":2.05,"Y":0.5}})
+	var b:=s.add_geometry(Box.new(),{"position":{"X":2.05,"Y":1.5}})
 	s.configure_body(a,"dynamic",Vector4(6,0,0,0),{"mass_properties":Mass.uniform_box(1,Vector4(2,2,2,2))})
 	s.configure_body(b,"static",Vector4.ZERO)
 	check(s.seek(1.0/60),"Real backend impact")

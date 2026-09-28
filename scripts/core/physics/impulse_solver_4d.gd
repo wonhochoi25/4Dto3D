@@ -1,6 +1,7 @@
 extends RefCounted
 ## Frictionless, linear/angular sequential impulses. Accumulation is local to one step.
 ## No contact cache, friction or dependency on a particular collision algorithm.
+const Friction=preload("res://scripts/core/physics/friction_4d.gd")
 const Weights=preload("res://scripts/core/physics/overlap_solver_4d.gd")
 
 static func solve(world, reports: Array, velocity: Callable, apply_pair: Callable, options: Dictionary = {}, point_velocity: Callable = Callable(), apply_at_points: Callable = Callable()) -> Dictionary:
@@ -49,35 +50,40 @@ static func solve(world, reports: Array, velocity: Callable, apply_pair: Callabl
 		var pa=point_from(measurements.get("point_a"))
 		var pb=point_from(measurements.get("point_b"))
 		var point: Variant=(pa+pb)*0.5 if pa!=null and pb!=null else null
-		var weight: float=wa+wb
-		if point!=null:
-			weight+=world.angular_inverse_mass(a,point,n)+world.angular_inverse_mass(b,point,n)
-		if not is_finite(weight) or weight<=0:
-			skipped+=1
-			continue
-		var va:=contact_velocity(world,velocity,point_velocity,a,point)
-		var vb:=contact_velocity(world,velocity,point_velocity,b,point)
-		var closing: float=(vb-va).dot(n)
-		if not is_finite(closing):
-			skipped+=1
-			continue
-		# Freeze the restitution target before iteration; never re-bounce in each sweep.
-		var restitution: float=maxf(world.motion_settings.get(a,{}).get("restitution",0.0),world.motion_settings.get(b,{}).get("restitution",0.0))
-		var target: float=-gap/dt
-		if result.get("status")=="intersecting" and closing<0 and -closing>=bounce_threshold:
-			target=-restitution*closing
-		constraints.append({"a":a,"b":b,"n":n,"weight":weight,"point":point,"target":target,"lambda":0.0,"changed":false})
+		var points: Array=result.get("contacts",[point])
+		for contact in points:
+			point=point_from(contact)
+			var weight: float=wa+wb
+			if point!=null:
+				weight+=world.angular_inverse_mass(a,point,n)+world.angular_inverse_mass(b,point,n)
+			if not is_finite(weight) or weight<=0:
+				skipped+=1
+				continue
+			var va:=contact_velocity(world,velocity,point_velocity,a,point)
+			var vb:=contact_velocity(world,velocity,point_velocity,b,point)
+			var closing: float=(vb-va).dot(n)
+			if not is_finite(closing):
+				skipped+=1
+				continue
+			# Freeze the restitution target before iteration; never re-bounce in each sweep.
+			var restitution: float=maxf(world.motion_settings.get(a,{}).get("restitution",0.0),world.motion_settings.get(b,{}).get("restitution",0.0))
+			var target: float=-gap/dt
+			if result.get("status")=="intersecting" and closing<0 and -closing>=bounce_threshold:
+				target=-restitution*closing
+			constraints.append({"a":a,"b":b,"n":n,"weight":weight,"point":point,"target":target,"lambda":0.0,"changed":false,"friction":Friction.setup(world,a,b,point,n,wa+wb)})
 	var sweeps:=0
 	var residual:=0.0
+	var friction_change:=0.0
 	for sweep in range(iterations):
 		sweeps=sweep+1
+		friction_change=0.0
 		for c in constraints:
 			var va:=contact_velocity(world,velocity,point_velocity,c.a,c.point)
 			var vb:=contact_velocity(world,velocity,point_velocity,c.b,c.point)
 			var speed: float=(vb-va).dot(c.n)
 			var next: float=maxf(0.0,c.lambda+(c.target-speed)/c.weight)
 			var delta: float=next-c.lambda
-			if delta==0: continue
+			# Friction still needs a pass when the normal impulse no longer changes.
 			var impulse: Vector4=c.n*delta
 			var accepted:=false
 			if impulse.is_finite():
@@ -87,7 +93,17 @@ static func solve(world, reports: Array, velocity: Callable, apply_pair: Callabl
 				skipped+=1
 				continue
 			c.lambda=next
-			c.changed=true
+			c.changed=c.changed or delta!=0
+			if c.friction.mu>0:
+				var relative: Vector4=contact_velocity(world,velocity,point_velocity,c.b,c.point)-contact_velocity(world,velocity,point_velocity,c.a,c.point)
+				var friction=Friction.update(c.friction,relative,c.lambda)
+				var tangential: Vector4=friction.impulse
+				var ok: bool=apply_pair.call({c.a:-tangential,c.b:tangential}) if c.point==null else apply_at_points.call({c.a:{"impulse":-tangential,"point":c.point},c.b:{"impulse":tangential,"point":c.point}})
+				if ok:
+					c.friction.total=friction.total
+					friction_change=maxf(friction_change,tangential.length())
+					c.changed=c.changed or tangential.length_squared()>0
+
 		# Check after the whole sweep: a later pair may disturb an earlier pair.
 		residual=0.0
 		for c in constraints:
@@ -95,11 +111,11 @@ static func solve(world, reports: Array, velocity: Callable, apply_pair: Callabl
 			var vb:=contact_velocity(world,velocity,point_velocity,c.b,c.point)
 			var difference: float=c.target-(vb-va).dot(c.n)
 			residual=maxf(residual,absf(difference) if c.lambda>0 else maxf(0.0,difference))
-		if residual<=tolerance: break
+		if residual<=tolerance and friction_change<=tolerance: break
 	var applied:=0
 	for c in constraints:
 		if c.changed: applied+=1
-	return {"status":"finished" if residual<=tolerance else "iteration_limit","impulses":applied,"skipped":skipped,"iterations":sweeps,"constraints":constraints.size(),"velocity_error":residual}
+	return {"status":"finished" if residual<=tolerance and friction_change<=tolerance else "iteration_limit","impulses":applied,"skipped":skipped,"iterations":sweeps,"constraints":constraints.size(),"velocity_error":residual,"friction_impulse_change":friction_change}
 
 static func point_from(value) -> Variant:
 	if value is Vector4: return value if value.is_finite() else null
