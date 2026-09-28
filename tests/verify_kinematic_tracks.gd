@@ -57,25 +57,5 @@ func verify():
 	session.set_geometry_expressions(id,{"position.0":"sqrt(0.1-t)"},false)
 	check(not session.seek(1),"Invalid target stops simulation")
 	check(session.recording.current_step==0,"Invalid seek retains displayed time")
-	var ui = preload("res://scripts/sandbox/physics/physics_scene.gd").new()
-	root.add_child(ui)
-	var catalog = preload("res://scripts/io/shape_catalog.gd")
-	var card = null
-	for index in range(catalog.ENTRIES.size()):
-		if catalog.ENTRIES[index].get("path","").ends_with("teleport.json"):
-			card=ui.add_shape(index)
-	check(card!=null,"Physics UI imports teleport")
-	if card!=null:
-		check(card.object.sources["projection.11"]=="tan(t)","Projection expression preserved")
-		check(card.object.sources["anchor.3"]=="0","Imported anchor removed")
-		ui.run_motion()
-		check(ui.session.playback.direction==1,"Imported track body runs without conversion")
-		ui.session.pause()
-		check(ui.evaluate_time(0.5),"Physics UI seeks teleport")
-		reference.seek(0)
-		var expected_points=projection.sample(0.5).project(reference.world_vertices(expected_id))
-		for i in range(expected_points.size()): check(card.object.last_points[i].distance_to(expected_points[i])<1e-5,"Numeric starting pose with animated projection")
-	ui.queue_free()
-	await process_frame
 	print("Kinematic track failures: ",failures)
 	quit(1 if failures else 0)

@@ -72,3 +72,9 @@ func seek(time: float, validate: Callable, budget: int = 2147483647) -> bool:
 
 func ready_at(time: float) -> bool:
 	return not frames.is_empty() and index_at(time) < frames.size()
+
+## Branch history after a host input at the displayed frame. Future snapshots are stale.
+func commit_current() -> void:
+	if frames.is_empty(): return
+	frames.resize(current_step+1)
+	frames[current_step]=simulation.snapshot()

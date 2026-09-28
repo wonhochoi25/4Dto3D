@@ -3,6 +3,11 @@ extends RefCounted
 ## Mutations invalidate simulation history; display-only edits belong to adapters.
 signal state_changed(time: float)
 signal scene_changed
+## Fires for evaluated simulation samples, including intermediate steps and replay. Read-only observers.
+signal contacts_evaluated(time: float, reports: Array)
+var contact_reports: Array[Dictionary]=[]
+var validated_contacts: Array[Dictionary]=[]
+var contact_options: Dictionary={"include_penetration":true}
 const Scene = preload("res://scripts/core/scene/scene_4d.gd")
 const Recording = preload("res://scripts/core/playback/simulation_recording.gd")
 const Playback = preload("res://scripts/core/playback/playback_4d.gd")
@@ -108,6 +113,7 @@ func validate_step(time: float) -> bool:
 	validated_state = evaluated
 	validated_time = time
 	if evaluated == null: error = scene.error
+	else: validated_contacts = evaluate_contacts(evaluated,time)
 	return evaluated != null
 
 func invalidate() -> void:
@@ -130,6 +136,7 @@ func seek(time: float, budget: int = 2147483647) -> bool:
 		return false
 	validated_state = null
 	validated_time = NAN
+	validated_contacts=[]
 	if not recording.seek(time, validate_step, budget):
 		playback.pause()
 		sync_dynamic()
@@ -142,9 +149,11 @@ func seek(time: float, budget: int = 2147483647) -> bool:
 	if validated_time != target_time or evaluated == null:
 		sync_dynamic()
 		evaluated = scene.sample(target_time)
+		if evaluated != null: validated_contacts=evaluate_contacts(evaluated,target_time)
 	if evaluated == null:
 		error = scene.error
 		return false
+	contact_reports = validated_contacts
 	state = evaluated
 	playback.time = recording.time_at(recording.current_step)
 	state_changed.emit(playback.time)
@@ -203,7 +212,7 @@ var collision_backend:
 	get: return physics.collision_backend
 	set(value): physics.collision_backend = value
 
-## Read-only narrow-phase query. Other session features do not invoke this backend.
+## Explicit read-only narrow-phase query, independent of automatic per-step reports.
 func query_collision(a_id: int, b_id: int, include_penetration: bool = false) -> Dictionary:
 	if a_id == b_id or not scene.objects.has(a_id) or not scene.objects.has(b_id):
 		return {"status":"indeterminate","reason":"Choose two different existing objects"}
@@ -245,6 +254,7 @@ func configure_dynamic_initial(id: int, expressions: Dictionary) -> bool:
 		error=track.error
 		return false
 	var values: Dictionary=track.sample(playback.start)
+	values.mass=physics.motion_settings.get(id,{}).get("mass",1.0)
 	if not Binding.configure(scene,physics,id,"dynamic",values.velocity,values):
 		error=Binding.configuration_error(scene,physics,id)
 		return false
@@ -264,5 +274,53 @@ func refresh_initial_motion(time: float, commit: bool = true) -> bool:
 	if commit:
 		for id in evaluated:
 			var values: Dictionary=evaluated[id]
+			values.mass=physics.motion_settings.get(id,{}).get("mass",1.0)
 			physics.configure_body(id,"dynamic",values.velocity,values)
 	return true
+
+## Runtime inputs branch recorded history; reset discards these inputs, restoring launch state.
+func apply_force(id: int, force: Vector4) -> bool:
+	if pending_seek!=null:
+		error="Finish or cancel the pending seek before applying inputs"
+		return false
+	if not physics.apply_force(id,force):
+		error=physics.error
+		return false
+	recording.commit_current()
+	error=""
+	return true
+
+func apply_impulse(id: int, impulse: Vector4) -> bool:
+	if pending_seek!=null:
+		error="Finish or cancel the pending seek before applying inputs"
+		return false
+	if not physics.apply_impulse(id,impulse):
+		error=physics.error
+		return false
+	recording.commit_current()
+	error=""
+	return true
+
+func set_gravity(value: Vector4) -> bool:
+	if not physics.set_gravity(value):
+		error=physics.error
+		return false
+	invalidate()
+	return true
+
+func set_kinematic_velocity(id: int, velocity: Vector4, angular: PackedFloat64Array = PackedFloat64Array([0,0,0,0,0,0])) -> bool:
+	if pending_seek!=null:
+		error="Finish or cancel the pending seek before applying inputs"
+		return false
+	if not physics.set_kinematic_velocity(id,velocity,angular):
+		error=physics.error
+		return false
+	recording.commit_current()
+	error=""
+	return true
+
+## Scene has already evaluated the authoritative 4D geometry; display projection is absent.
+func evaluate_contacts(evaluated: Dictionary, time: float) -> Array[Dictionary]:
+	var reports := physics.query_contacts(Binding.colliders(scene,physics,evaluated),contact_options)
+	contacts_evaluated.emit(time,reports.duplicate(true))
+	return reports

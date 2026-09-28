@@ -34,9 +34,9 @@ func verify() -> void:
 	var app = load("res://scenes/app.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
-	check(app.pages.size() == 3 and app.active == 0, "Default playground, procedural, physics")
+	check(app.pages.size() == 2 and app.active == 0, "Default playground and procedural")
 	app.close_page(0)
-	check(app.pages.size() == 3, "Unclosable playground")
+	check(app.pages.size() == 2, "Unclosable playground")
 	app.activate(1)
 	await process_frame
 	var scene = app.pages[1]["scene"]
@@ -124,11 +124,11 @@ func verify() -> void:
 	for frame in range(30): scene.evaluate_time(frame / 30.0)
 	print("All-shape CPU frame average ms: ", (Time.get_ticks_usec() - started) / 30000.0)
 	app.new_procedural()
-	check(app.pages[3]["scene"].cards.is_empty(), "New tab independent")
+	check(app.pages[2]["scene"].cards.is_empty(), "New tab independent")
 	app.close_page(1)
-	check(app.pages.size() == 3 and app.active == 2, "Close other tab preserves active")
-	app.close_page(2)
-	check(app.pages.size() == 2 and app.active == 1, "Close active returns Physics")
+	check(app.pages.size() == 2 and app.active == 1, "Close other tab preserves active")
+	app.close_page(1)
+	check(app.pages.size() == 1 and app.active == 0, "Close active returns Playground")
 	await process_frame
 	print("Procedural failures: ", failures)
 	quit(1 if failures else 0)

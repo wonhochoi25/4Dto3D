@@ -89,7 +89,7 @@ Object IDs returned by `add_geometry` identify groups. Leaf IDs in `scene.object
 
 Simulation validation does not project geometry and cannot be invalidated by a rendering expression. Projection failures are presentation errors: the sandbox pauses and retains the last rendered geometry. Projection settings and appearance never enter recorded physics state.
 
-The packed dynamic state contains position (4), velocity (4), orientation matrix (16), and angular velocity (6, degrees/sec). Dynamic groups are now wired into scene evaluation. Physics body controls and read-only collision queries are available; there are no forces, gravity, or collision response yet. Snapshot dictionaries are adequate for this sandbox; this is not a production physics engine.
+The packed state contains position, velocity, orientation, angular velocity, elapsed time, mass, and pending force (see PHYSICS.md for layout). Scene evaluation uses body motion. Central forces, impulses, and global 4D gravity are implemented; collision queries remain read-only and collision response is not implemented. Snapshot dictionaries are adequate for this sandbox; this is not a production physics engine.
 
 ## Sandbox adapters
 
@@ -143,23 +143,15 @@ Production callers now depend only on `core/physics/collision/collision_backend.
 
 `io/shape_json_exporter.gd` serializes supplied in-memory geometry plus committed geometry/group/projection source dictionaries into the existing `hi_4d.json` schema, then writes JSON. It has no sandbox dependencies and does not bake world transforms. The procedural controller owns the save dialog, checks for unapplied editor fields, and snapshots the selected shape before opening the dialog. Existing discovery and loading require no changes. `tests/verify_shape_export.gd` verifies edited geometry/topology and every transform/projection expression through the real loader; the procedural suite verifies both default tabs and subsequent tab closing/creation.
 
-### Physics solid-view workspace
+### Physics development without a sandbox UI
 
-`physics/physics_scene.gd` specializes the existing sandbox controller with numeric mode, preserving shared selection/hierarchy/export behavior. Numeric input is checked before committing, imported defaults and compensated anchor expressions are frozen at t=0, and the procedural timeline is disabled. Procedural mode remains expression-based. Physics has its own translation-only Run/Pause/Reset controls, described below.
+The Physics tab and its editor/controller have been removed. The app opens Playground
+and Procedural, and + creates additional Procedural tabs. Core physics remains
+independent and is developed through headless tests (see PHYSICS.md).
 
-`rendering/projected_hull_3d.gd` computes an incremental 3D convex hull after scale normalization/deduplication, with planar monotone-chain and line/point fallbacks. `solid_hull_renderer.gd` caches unchanged projected vertices, renders only exterior triangles with flat normals and opaque material, and removes coplanar triangulation diagonals from edge overlays. Physics picking uses this hull rather than source wire faces. These display operations never alter the source 4D vertices, collider, or transform state. Hull tolerances approximate nearly degenerate projections; a fallback label reports lower dimension.
-
-`verify_physics.gd` checks cube volume, closed hulls and vertex containment for built-in shapes, dimensional fallbacks, opaque material, numeric validation, custom animation freezing and numeric anchor compensation. The shared tab tests include the new persistent Physics tab.
-
-### Body types and translation-only motion
-
-`PhysicsWorld4D.body_types` chooses static (restore initial state), kinematic (prescribed initial velocity each step), or dynamic (integrate current simulated velocity). Configuration is separate from packed recorded state; changing configuration invalidates history. Existing `make_dynamic` API semantics are preserved.
-
-`Session.configure_body(id, type, initial_velocity)` stores validated settings and registers a zero-displacement body. The scene-side `PhysicsBinding4D` composes that displacement with the initial group PRSA, compensating the fixed parenting offset so velocity is in world axes for root bodies. Geometry PRSA remains intact. `start_body_motion` refuses parented Physics bodies; queries still work while paused. Removal and `make_procedural` clean up body metadata. Legacy procedural sessions do not assign body types automatically.
-
-Physics UI owns controls only; `session.advance(delta)` drives the existing bounded fixed-step recording system. Numeric starting edits invalidate/reset motion; run-time pose and velocity live in recorded simulation state. The UI blocks edit commits during playback and checks pending drafts before starting. No collision backend is invoked by integration. Reset and backward/forward seeking reproduce recorded poses. Initial angular velocity is zero, so this UI stage has no angular dynamics.
-
-`verify_body_motion.gd` covers immovable static bodies, constant motion in all four axes, initial geometry/group transform preservation, prescribed vs simulated velocity ownership, deterministic replay/reset, root-only run validation, metadata removal, fractional velocity input, and Physics Run/Pause/Reset integration.
+The reusable projected hull builder and solid renderer remain under rendering/;
+`verify_physics.gd` retains geometric hull tests. Physics-UI-only branches were
+removed from the shared Procedural editor, and mixed tests retain their core checks.
 
 ## Physics module boundary
 
@@ -178,7 +170,7 @@ core/physics/
     epa_4d.gd
 ```
 
-No contact solver file exists yet: there is no collision response or acceleration in this refactor. The integrator does not call detection. Collision queries can also be used independently of a physics world.
+No contact solver file exists yet: collision response is not implemented. Dynamic acceleration is computed from gravity plus accumulated force divided by mass. The integrator does not call detection. Collision queries can also be used independently of a physics world.
 
 `Session.physics` owns the runtime instance. Session's existing body APIs delegate to it and handle recording invalidation; its `motion_settings` and `collision_backend` properties forward to physics for compatibility. The session does not index packed body state or implement integration. The scene adapter owns only hierarchy/PRSA conversion and the current World-only run restriction; those concepts do not leak into physics.
 
@@ -209,3 +201,16 @@ through Session at reset/start. The physics module remains numeric and independe
 of animation. Initial expressions do not run during integration or recorded replay.
 Static bodies retain normal hierarchy inheritance; their frozen local transforms
 are composed through the same graph as other objects.
+
+Motion ownership is explicit: World accepts forces/impulses only for dynamic bodies
+and prescribed velocity only for rate-driven kinematic bodies. Session input methods
+branch recorded history at the current frame; reset restores initial conditions.
+The generic recorder's `commit_current()` has no physics-specific knowledge.
+
+### Automatic contacts
+
+After a valid scene sample, Session asks PhysicsWorld.query_contacts for registered
+body pairs containing a dynamic body. The scene binding supplies collider descriptors;
+physics/contact_queries_4d.gd owns pair selection and calls the replaceable backend.
+Results are exposed through contact_reports and contacts_evaluated, without response.
+Replay re-evaluates contacts from restored poses; snapshots remain motion-only.

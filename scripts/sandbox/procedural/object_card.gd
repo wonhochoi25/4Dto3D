@@ -3,10 +3,6 @@ extends PanelContainer
 signal apply_requested(card)
 signal remove_requested(card)
 signal style_changed(card)
-var numeric_mode := false
-var solid_mode := false
-var compact_physics := false
-var hull_status: Label
 var object
 var renderer
 var fields: Dictionary = {}
@@ -65,63 +61,53 @@ func setup(model, mesh_renderer) -> void:
 	opacity.value_changed.connect(func(value: float): object.color.a = value; style_changed.emit(self))
 	appearance.add_child(opacity)
 	appearance.visible = not object.is_group
-	if solid_mode or numeric_mode:
-		opacity.hide()
-		opacity_label.hide()
-		hull_status = Label.new()
-		hull_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		hull_status.visible = not object.is_group
-		body.add_child(hull_status)
-	if compact_physics:
-		build_compact_start()
-	else:
-		var tabs := TabContainer.new()
-		tabs.use_hidden_tabs_for_min_size = false
-		body.add_child(tabs)
-		for component in ["position", "angles", "scale", "anchor", "projection"]:
-			if object.is_group and component == "projection": continue
-			var section := VBoxContainer.new()
-			section.name = "Rotation" if component == "angles" else component.capitalize()
-			tabs.add_child(section)
-			if component == "anchor":
-				anchor_keep_toggle = CheckBox.new()
-				anchor_keep_toggle.text = "Keep subtree in place when editing anchor" if object.is_group else "Keep shape in place when editing anchor"
-				anchor_keep_toggle.button_pressed = object.keep_anchor_in_place
-				anchor_keep_toggle.tooltip_text = "On Apply, compensate Position at the current time. Anchor animation still runs normally."
-				anchor_keep_toggle.toggled.connect(func(enabled: bool): object.keep_anchor_in_place = enabled)
-				section.add_child(anchor_keep_toggle)
-				var note := Label.new()
-				note.text = "Adjusts Position to preserve the current pose on Apply." if numeric_mode else "Adjusts Position expressions at the current t on Apply."
-				note.add_theme_font_size_override("font_size", 13)
-				section.add_child(note)
-			var names := ["X", "Y", "Z", "W"]
-			if object.is_group and component == "scale": names = ["All"]
-			if component == "angles": names = ["XY", "XZ", "XW", "YZ", "YW", "ZW"]
-			if component == "projection":
-				build_projection_matrix(section)
-				continue
-			for i in range(names.size()):
-				var row := HBoxContainer.new()
-				section.add_child(row)
-				var title := Label.new()
-				title.text = names[i]
-				title.custom_minimum_size.x = 55
-				row.add_child(title)
-				var field := LineEdit.new()
-				var key := "%s.%d" % [component, i]
-				field.text = object.sources[key]
-				field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				field.placeholder_text = "Number" if numeric_mode else "Expression in t"
-				row.add_child(field)
-				fields[key] = field
-				var error_label := Label.new()
-				error_label.add_theme_color_override("font_color", Color("ff9a9a"))
-				error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-				error_label.hide()
-				section.add_child(error_label)
-				errors[key] = error_label
+	var tabs := TabContainer.new()
+	tabs.use_hidden_tabs_for_min_size = false
+	body.add_child(tabs)
+	for component in ["position", "angles", "scale", "anchor", "projection"]:
+		if object.is_group and component == "projection": continue
+		var section := VBoxContainer.new()
+		section.name = "Rotation" if component == "angles" else component.capitalize()
+		tabs.add_child(section)
+		if component == "anchor":
+			anchor_keep_toggle = CheckBox.new()
+			anchor_keep_toggle.text = "Keep subtree in place when editing anchor" if object.is_group else "Keep shape in place when editing anchor"
+			anchor_keep_toggle.button_pressed = object.keep_anchor_in_place
+			anchor_keep_toggle.tooltip_text = "On Apply, compensate Position at the current time. Anchor animation still runs normally."
+			anchor_keep_toggle.toggled.connect(func(enabled: bool): object.keep_anchor_in_place = enabled)
+			section.add_child(anchor_keep_toggle)
+			var note := Label.new()
+			note.text = "Adjusts Position expressions at the current t on Apply."
+			note.add_theme_font_size_override("font_size", 13)
+			section.add_child(note)
+		var names := ["X", "Y", "Z", "W"]
+		if object.is_group and component == "scale": names = ["All"]
+		if component == "angles": names = ["XY", "XZ", "XW", "YZ", "YW", "ZW"]
+		if component == "projection":
+			build_projection_matrix(section)
+			continue
+		for i in range(names.size()):
+			var row := HBoxContainer.new()
+			section.add_child(row)
+			var title := Label.new()
+			title.text = names[i]
+			title.custom_minimum_size.x = 55
+			row.add_child(title)
+			var field := LineEdit.new()
+			var key := "%s.%d" % [component, i]
+			field.text = object.sources[key]
+			field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			field.placeholder_text = "Expression in t"
+			row.add_child(field)
+			fields[key] = field
+			var error_label := Label.new()
+			error_label.add_theme_color_override("font_color", Color("ff9a9a"))
+			error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			error_label.hide()
+			section.add_child(error_label)
+			errors[key] = error_label
 	var apply := Button.new()
-	apply.text = "Apply starting settings" if compact_physics else "Apply values" if numeric_mode else "Apply expressions"
+	apply.text = "Apply expressions"
 	apply.pressed.connect(func(): apply_requested.emit(self))
 	body.add_child(apply)
 	message = Label.new()
@@ -182,7 +168,6 @@ func build_projection_matrix(section: VBoxContainer) -> void:
 			field.custom_minimum_size.x = 90
 			field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			field.tooltip_text = "Output %s ← input %s · expression in t" % [["X", "Y", "Z"][row], ["X", "Y", "Z", "W"][column]]
-			if numeric_mode: field.tooltip_text = "Numeric projection coefficient"
 			cell.add_child(field)
 			fields[key] = field
 			var error_label := Label.new()
@@ -191,40 +176,3 @@ func build_projection_matrix(section: VBoxContainer) -> void:
 			error_label.hide()
 			cell.add_child(error_label)
 			errors[key] = error_label
-
-## Compact vector rows. Preserve field keys so shared Apply/error handling still works.
-func build_compact_start() -> void:
-	for component in ["position","angles","scale"]:
-		var label := Label.new()
-		label.text={"position":"Position","angles":"Rotation · degrees","scale":"Scale"}[component]
-		body.add_child(label)
-		var row := HBoxContainer.new()
-		body.add_child(row)
-		var names := ["X","Y","Z","W"]
-		if component=="angles": names=["XY","XZ","XW","YZ","YW","ZW"]
-		if component=="scale" and object.is_group: names=["All"]
-		for i in range(names.size()):
-			var cell := VBoxContainer.new()
-			cell.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-			row.add_child(cell)
-			var axis := Label.new()
-			axis.text=names[i]
-			cell.add_child(axis)
-			var key := "%s.%d" % [component,i]
-			var field := LineEdit.new()
-			field.text=object.sources[key]
-			field.custom_minimum_size.x=50
-			field.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-			field.placeholder_text="Number"
-			cell.add_child(field)
-			fields[key]=field
-	if not object.is_group:
-		var toggle := Button.new()
-		toggle.text="Projection · 4D → 3D · expressions in t"
-		toggle.toggle_mode=true
-		body.add_child(toggle)
-		var section := VBoxContainer.new()
-		body.add_child(section)
-		build_projection_matrix(section)
-		section.hide()
-		toggle.toggled.connect(func(open: bool): section.visible=open)

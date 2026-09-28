@@ -53,3 +53,13 @@ static func run_error(scene, physics) -> String:
 		if scene.entries[id].parent!=0 and physics.motion_settings[id].type != "static" and physics.motion_settings[id].get("source","rates") != "tracks":
 			return "Dynamic and rate-driven bodies must be directly under World. Track-driven kinematic bodies may be parented."
 	return ""
+
+## Translate evaluated scene state to borrowed, read-only collider descriptors.
+static func colliders(scene, physics, evaluated: Dictionary) -> Dictionary:
+	var result := {}
+	for id in physics.body_types:
+		if not scene.objects.has(id): continue
+		var object: Dictionary=scene.objects[id]
+		if evaluated.has(object.leaf_id):
+			result[id]={"geometry":object.geometry,"world":evaluated[object.leaf_id].world}
+	return result

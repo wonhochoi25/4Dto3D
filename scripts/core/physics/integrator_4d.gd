@@ -1,16 +1,15 @@
 extends RefCounted
 ## Motion law only. No lifecycle, recording, collision, scene or UI responsibilities.
 const Math4D = preload("res://scripts/core/math/transform_4d.gd")
-static func step_state(previous: PackedFloat64Array, initial: PackedFloat64Array, body_type: String, dt: float) -> PackedFloat64Array:
+static func step_state(previous: PackedFloat64Array, initial: PackedFloat64Array, body_type: String, dt: float, gravity: Vector4 = Vector4.ZERO) -> PackedFloat64Array:
 	if body_type=="static": return initial.duplicate()
 	var state := previous.duplicate()
 	state[40] += dt
-	# Semi-implicit Euler: update rates first, then position/orientation.
-	# Kinematic rates follow the prescribed clock, ignoring simulated rate changes.
-	for axis in range(4):
-		state[4+axis] = initial[4+axis]+initial[30+axis]*state[40] if body_type=="kinematic" else state[4+axis]+state[30+axis]*dt
-	for plane in range(6):
-		state[24+plane] = initial[24+plane]+initial[34+plane]*state[40] if body_type=="kinematic" else state[24+plane]+state[34+plane]*dt
+	# Dynamics own simulated velocity. Kinematics retain host-prescribed velocity.
+	if body_type=="dynamic":
+		for axis in range(4): state[4+axis]+=(gravity[axis]+state[42+axis]/state[41])*dt
+	# Forces are accumulated for exactly one simulation step, never replayed twice.
+	for axis in range(4): state[42+axis]=0.0
 	for axis in range(4): state[axis]+=state[4+axis]*dt
 	# Translation-only bodies retain their orientation without matrix work.
 	var rotating := false

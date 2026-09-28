@@ -35,34 +35,12 @@ func verify():
 	sim.bodies[ids[1]]=kin
 	sim.bodies[ids[2]]=dyn
 	sim.step(1)
-	check(sim.bodies[ids[1]][0]==1 and sim.bodies[ids[2]][0]==9,"Prescribed vs simulated velocity ownership")
+	check(sim.set_kinematic_velocity(ids[1],Vector4(1,2,3,4)),"Explicit kinematic prescription")
+	check(not sim.apply_impulse(ids[1],Vector4.ONE) and sim.bodies[ids[2]][0]==9,"Prescribed vs simulated ownership")
 	check(not session.configure_body(ids[0],"invalid",Vector4.ZERO),"Invalid type rejected")
 	session.invalidate()
 	check(session.reparent(ids[2],ids[0]),"Paused parenting allowed")
 	check(not session.start_body_motion(),"Parented run explicitly blocked")
 	check(session.remove_object(ids[2]) and not session.motion_settings.has(ids[2]) and not sim.body_types.has(ids[2]),"Removal cleans body metadata")
-	var scene = preload("res://scripts/sandbox/physics/physics_scene.gd").new()
-	root.add_child(scene)
-	var card=scene.add_shape(0)
-	await process_frame
-	await process_frame
-	var id: int=card.get_meta("group_id")
-	var editor: Dictionary=scene.body_editors[id]
-	editor.picker.select(2)
-	editor.fields[0].text="0.1"
-	scene.apply_body(id,editor.picker,editor.fields)
-	scene.run_motion()
-	check(scene.session.playback.direction==1,"Run starts with fractional velocity")
-	scene.session.advance(1)
-	while scene.session.pending_seek!=null: scene.session.advance_seek()
-	check(scene.session.playback.time>0,"Physics clock advances")
-	scene.session.pause()
-	var time: float=scene.session.playback.time
-	scene.session.advance(1)
-	check(scene.session.playback.time==time,"Pause stops")
-	scene.reset_motion()
-	check(scene.session.playback.time==0,"UI reset")
-	scene.queue_free()
-	await process_frame
 	print("Body motion failures: ",failures)
 	quit(1 if failures else 0)

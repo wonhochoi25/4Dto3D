@@ -2,12 +2,16 @@ extends RefCounted
 ## Initial-condition expressions only. Sample once at run start, never each step.
 ## Uses the shared safe scalar evaluator; no physics, scene, or UI dependencies.
 const Scalar = preload("res://scripts/core/animation/math_expression.gd")
-const COUNTS = {"velocity":4,"acceleration":4,"angular_velocity":6,"angular_acceleration":6}
+const COUNTS = {"velocity":4,"angular_velocity":6}
 var sources: Dictionary = {}
 var programs: Dictionary = {}
 var error := ""
 
 func configure(candidate: Dictionary, time: float) -> bool:
+	for key in candidate:
+		if str(key).begins_with("acceleration.") or str(key).begins_with("angular_acceleration."):
+			error="Acceleration inputs were removed; use forces/gravity or prescribed velocity"
+			return false
 	var next := {}
 	var text := {}
 	for component in COUNTS:

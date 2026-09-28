@@ -6,9 +6,6 @@ const FaceRenderer = preload("res://scripts/rendering/face_renderer.gd")
 const Card = preload("res://scripts/sandbox/procedural/object_card.gd")
 const Timeline = preload("res://scripts/sandbox/procedural/timeline.gd")
 const Registry = preload("res://scripts/io/shape_catalog.gd")
-var numeric_mode := false
-# Solid rendering is independent of whether the editor accepts expressions.
-var allow_physics_expressions := false
 var cards: Array = []
 var list: VBoxContainer
 var timeline := Timeline.new()
@@ -79,13 +76,11 @@ func _ready() -> void:
 	box.minimum_size_changed.connect(func(): fit_sidebar.call_deferred())
 	get_viewport().size_changed.connect(func(): fit_sidebar.call_deferred())
 	var title := Label.new()
-	title.text = "Physics · solid shapes" if numeric_mode else "Procedural experiment"
+	title.text = "Procedural experiment"
 	title.add_theme_font_size_override("font_size", 23)
 	box.add_child(title)
 	var help := Label.new()
 	help.text = "Expressions: t in seconds; rotations in degrees.\nTry rotation XW = 30*t.\nProjection is independent per shape. Apply to commit."
-	if numeric_mode:
-		help.text = "Numeric transforms · rotations in degrees.\n4D solid = convex hull of vertices.\nOpaque projected hulls; no dynamics yet.\nCustom animations are sampled at t = 0."
 	help.add_theme_font_size_override("font_size", 14)
 	help.add_theme_color_override("font_color", Color("b7c6d9"))
 	box.add_child(help)
@@ -135,9 +130,6 @@ func _ready() -> void:
 	bottom.offset_top = -166
 	bottom.offset_bottom = -12
 	bottom.add_child(timeline)
-	if numeric_mode and not allow_physics_expressions:
-		bottom.hide()
-		timeline.process_mode = Node.PROCESS_MODE_DISABLED
 	timeline.time_requested.connect(request_time)
 	timeline.range_requested.connect(func(from: float, to: float): session.set_range(from, to))
 	rebuild_tree.call_deferred()
@@ -168,12 +160,6 @@ func add_shape(index: int):
 	if not group_model.initialize_defaults(model.defaults.get("group", {}), timeline.time):
 		show_tree_error("Group " + group_model.error_field + ": " + group_model.error)
 		return null
-	prepare_starting_models(model,group_model)
-	if numeric_mode and not allow_physics_expressions:
-		freeze_model(model)
-		freeze_model(group_model)
-		var exporter = preload("res://scripts/io/shape_json_exporter.gd")
-		model.defaults = {"geometry":exporter.transform_fields(model.track.sources,false),"group":exporter.transform_fields(group_model.track.sources,true)}
 	tree_message.hide()
 	var group_id := session.add_geometry(model.shape, model.defaults.get("geometry", {}), model.defaults.get("group", {}))
 	if group_id == 0:
@@ -183,7 +169,7 @@ func add_shape(index: int):
 	model.shape = graph.objects[group_id].geometry
 	model.track = graph.objects[group_id].track
 	group_model.track = graph.objects[group_id].group
-	var renderer = preload("res://scripts/rendering/solid_hull_renderer.gd").new() if numeric_mode else FaceRenderer.new()
+	var renderer = FaceRenderer.new()
 	add_child(renderer)
 	var editor := TabContainer.new()
 	editor.use_hidden_tabs_for_min_size = false
@@ -201,9 +187,6 @@ func add_shape(index: int):
 
 func create_card(model, renderer, id: int, editor: TabContainer):
 	var card := Card.new()
-	card.numeric_mode = numeric_mode and not allow_physics_expressions
-	card.solid_mode = numeric_mode
-	card.compact_physics = numeric_mode and allow_physics_expressions
 	editor.add_child(card)
 	card.setup(model, renderer)
 	card.set_meta("node_id", id)
@@ -237,12 +220,6 @@ func remove_card(card) -> void:
 	display_time(timeline.time)
 
 func apply_card(card) -> void:
-	if numeric_mode and not allow_physics_expressions:
-		for key in card.fields:
-			var value: String = card.fields[key].text.strip_edges()
-			if not value.is_valid_float() or not is_finite(value.to_float()):
-				card.show_error(key,"Enter a finite number. Time expressions belong in Procedural tabs.")
-				return
 	var trial = card.object.ProjectionTrack.new()
 	if not trial.apply_sources(card.draft(), timeline.time):
 		card.show_error(trial.error_field, trial.error)
@@ -252,9 +229,6 @@ func apply_card(card) -> void:
 		card.show_error(card.object.track.error_field, session.error)
 		return
 	card.object.projection_track = trial
-	if numeric_mode and not allow_physics_expressions:
-		freeze_model(card.object)
-		session.invalidate()
 	card.clear_errors()
 	for key in card.fields: card.fields[key].text = card.object.sources[key]
 	display_time(timeline.time)
@@ -311,7 +285,6 @@ func display_time(value: float) -> bool:
 		card.object.last_points = projected[id]
 		card.renderer.render(card.object, projected[id])
 		card.renderer.set_selected(card == selected_card)
-		if numeric_mode: card.hull_status.text = card.renderer.description
 	timeline.accept(value)
 	if is_instance_valid(collision_inspector): collision_inspector.update_query()
 	return true
@@ -450,11 +423,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		var pick_faces: Array = card.object.faces
 		var pick_edges: Array = []
 		for edge in card.object.shape.edges: pick_edges.append(edge)
-		if numeric_mode:
-			points = card.renderer.hull.vertices
-			pick_faces = card.renderer.hull.triangles
-			pick_edges.clear()
-			for edge in card.renderer.hull.edges: pick_edges.append(Vector2i(edge[0],edge[1]))
 		for face in pick_faces:
 			for i in range(1, face.size() - 1):
 				var hit = Geometry3D.ray_intersects_triangle(origin, direction, points[int(face[0])], points[int(face[i])], points[int(face[i + 1])])
@@ -477,7 +445,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Hug the visible content, scrolling only when it exceeds the available height.
 func fit_sidebar() -> void:
 	if not is_inside_tree() or not is_instance_valid(sidebar_box): return
-	var available := maxf(100.0, get_viewport().get_visible_rect().size.y - (40.0 if numeric_mode and not allow_physics_expressions else 218.0))
+	var available := maxf(100.0, get_viewport().get_visible_rect().size.y - 218.0)
 	sidebar_scroll.custom_minimum_size.y = minf(sidebar_box.get_combined_minimum_size().y, available)
 	panel.size.y = panel.get_combined_minimum_size().y
 
@@ -509,18 +477,3 @@ func export_shape(card) -> void:
 		dialog.queue_free())
 	dialog.canceled.connect(dialog.queue_free)
 	dialog.popup_centered_ratio(0.7)
-
-## Freeze defaults/anchor compensation to numeric literals; preserves local PRSA at t=0.
-func freeze_model(model) -> void:
-	var values := {}
-	for key in model.track.compiled: values[key] = str(model.track.compiled[key].evaluate(0.0))
-	var keep: bool = model.keep_anchor_in_place
-	model.keep_anchor_in_place = false
-	model.track.apply_sources(values,0.0)
-	model.keep_anchor_in_place = keep
-	var projection := {}
-	for key in model.projection_track.compiled: projection[key] = str(model.projection_track.compiled[key].evaluate(0.0))
-	model.projection_track.apply_sources(projection,0.0)
-
-func prepare_starting_models(_model, _group_model) -> void:
-	pass
