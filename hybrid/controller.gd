@@ -5,9 +5,21 @@ var inspection_xray := true
 var perspective_button: Button
 var camera_help: Label
 var crosshair: Label
+var interact_button: Button
+
+func _ready() -> void:
+	super._ready()
+	var args := OS.get_cmdline_user_args()
+	var i := args.find("--chamber")
+	if i >= 0 and i + 1 < args.size(): load_level(clampi(int(args[i + 1]) - 1, 0, 3))
 
 func build_ui() -> void:
 	super.build_ui()
+	interact_button = make_button("G  Grab / release key")
+	interact_button.pressed.connect(interact_key)
+	var actions := shell_button.get_parent()
+	actions.add_child(interact_button)
+	actions.move_child(interact_button, 0)
 	perspective_button = make_button("F  Inspect in third person")
 	perspective_button.pressed.connect(toggle_perspective)
 	var side := camera_button.get_parent()
@@ -53,6 +65,7 @@ func toggle_shell() -> void:
 func move_player(delta: Vector3) -> void:
 	if inspecting: return
 	super.move_player(delta)
+	if world.key_id >= 0: view.sync_objects(world, player_position)
 
 func step_movement(local: Vector3, seconds: float, precision: bool = false) -> void:
 	if inspecting or won: return
@@ -68,9 +81,16 @@ func _physics_process(delta: float) -> void:
 		step_movement(Vector3(Input.get_axis("move_left", "move_right"), Input.get_axis("move_down", "move_up"), Input.get_axis("move_forward", "move_back")), delta, Input.is_action_pressed("move_slow"))
 	update_hud()
 
+func interact_key() -> void:
+	if inspecting or won or world.key_id < 0: return
+	world.interact(mode, -view.camera.global_basis.z)
+	view.rebuild(world, player_position, mode)
+	update_hud()
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
+			KEY_G: interact_key(); return
 			KEY_F: toggle_perspective(); return
 			KEY_ESCAPE:
 				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -115,7 +135,7 @@ func update_hud() -> void:
 		controls_label.text = "WASD   Move relative to look\nQ / E    Down / Up\nMouse  Look   ·   Shift  Precision\nF  Inspect   ·   Esc  Free cursor"
 		camera_help.text = "Click scene to look and move\nEsc  Free cursor   ·   C  Reset look"
 		status_label.text = "FIRST PERSON · Click inside the scene to look and move. F opens inspection." if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED else "FIRST PERSON · Mouse looks; WASD moves. F inspects; Esc releases the cursor."
-	if detailed_hint and not won:
+	if detailed_hint and not won and world.key_id < 0:
 		var target: Vector4 = world.definition.route[world.stage]
 		var suggested: int = world.definition.route_modes[world.stage]
 		hint_label.text = "Use %s (key %d). In FIRST PERSON move toward X %.1f, Y %.1f, Z %.1f, W %.1f. WASD follows your look; F switches between walking and inspection." % [World.MODES[suggested].name, suggested + 1, target.x, target.y, target.z, target.w]
@@ -125,3 +145,15 @@ func update_hud() -> void:
 		mode_label.text += "  ·  LOOK: %s %.2f / %s %.2f" % [World.AXIS_NAMES[axes[0]], forward.x, World.AXIS_NAMES[axes[2]], forward.z]
 
 	if bump_timer > 0: status_label.text += "  BLOCKED by a 4D solid or room boundary."
+
+	interact_button.visible = world.key_id >= 0
+	interact_button.disabled = inspecting or won or world.plate_active
+	interact_button.text = "G  Release key" if world.holding else "G  Grab key"
+	if world.key_id >= 0:
+		var key: Vector4 = world.key_position
+		goal_label.text = "KEY: X %.2f  Y %.2f  Z %.2f  W %.2f  |  %s  |  PLATE %s" % [key.x, key.y, key.z, key.w, "CARRIED" if world.holding else "SECURED" if world.plate_active else "RELEASED", "ACTIVE · GATE OPEN" if world.plate_active else "X 1.8 / Y 0 / Z 0 / W 3"]
+		if not inspecting:
+			controls_label.text += "\nG  Grab / release key"
+		if not world.interaction_message.is_empty():
+			status_label.text += "  " + world.interaction_message
+		if detailed_hint and not won: hint_label.text = world.definition.details[world.stage]

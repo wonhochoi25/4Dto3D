@@ -10,7 +10,7 @@ parser.add_argument('--godot', default=str(Path.home() / 'Applications/Godot.app
 args = parser.parse_args()
 project = Path(__file__).resolve().parents[2]
 suites = ['hybrid/imported/tests/campaign/test_chambers.gd', 'hybrid/tests/test_hybrid.gd',
-          'tests/verify_artifact_puzzle.gd', 'tests/verify_guided_experience.gd']
+          'hybrid/tests/test_key_chamber.gd', 'tests/verify_artifact_puzzle.gd', 'tests/verify_guided_experience.gd']
 failed = False
 with tempfile.TemporaryDirectory(prefix='hybrid-tests-') as logs:
     for i, suite in enumerate(suites):
@@ -24,5 +24,5 @@ with tempfile.TemporaryDirectory(prefix='hybrid-tests-') as logs:
         except subprocess.TimeoutExpired:
             print(f'FAIL: {suite} timed out', flush=True)
             failed = True
-print('FAIL' if failed else 'PASS: all four suites')
+print('FAIL' if failed else 'PASS: all five suites')
 raise SystemExit(int(failed))

@@ -1,6 +1,6 @@
 # Hybrid training: walk, inspect, return
 
-This is the combined first-/third-person version of all three training chambers. Everything added for this integration lives in `hybrid/` inside the repository. The original third-person project is preserved separately; the upstream prototype files remain unchanged. The local checkout folder may be renamed without changing resource paths or the launcher.
+This is the combined first-/third-person version of all four training chambers. Everything added for this integration lives in `hybrid/` inside the repository. The original third-person project is preserved separately; the upstream prototype files remain unchanged. The local checkout folder may be renamed without changing resource paths or the launcher.
 
 ## Run
 
@@ -23,6 +23,7 @@ Open this repository's `project.godot` in Godot, open **hybrid/training.tscn**, 
 | Inspection zoom | Mouse wheel |
 | Inspection X-ray | V or the X-ray button |
 | Optional detailed hint | H |
+| Grab / release key (chamber four, first person only) | G or the button |
 | Reset camera/look | C |
 | Restart chamber | R |
 | Next chamber after completion | Enter |
@@ -33,11 +34,12 @@ Only first person permits movement, including vertical movement. Inspection cann
 
 Both camera poses persist independently across view toggles. C deliberately resets the active camera; restarting resets both. First-person walls are solid. Inspection retains its separate X-ray preference. X-ray, hints, and markers are visual aids, not collider changes.
 
-## The three preserved puzzles
+## The four puzzles
 
 1. **A Different Direction:** advance along W to the doorway's slice, then cross along X.
 2. **The Elbow:** pass the first gate at W=3, turn along Z in the central tunnel, return along W to zero, and cross the second gate.
 3. **A Step Back:** W forward, X backward, Z around the core, then X forward to the exit.
+4. **The Right Fit:** carry a constant-size key to W=3, through a wider opening, then release it onto a plate to unlock the exit. See [chamber-four notes](CHAMBER_FOUR.md).
 
 The original authored solid bounds, tunnel cuts, route coordinates, and player collision dimensions are preserved. All three routes are tested using first-person forward movement after orienting the camera along each segment. Optional hints now give coordinate targets rather than prescribing a world-axis D/A press, since WASD is camera-relative.
 
@@ -53,7 +55,7 @@ This retains the original no-gravity movement and small cube-sized player, with 
 
 The first-person interaction adopts the upstream prototype's captured mouse look and yaw-relative movement, but routes locomotion through the existing 4D swept motor. It intentionally does not instantiate the prototype's gravity-driven `CharacterBody3D` controller or projected 3D artifact physics, which would change the spatial rules of these puzzles. The upstream artifact and guided prototypes remain available as separate scenes.
 
-No movable objects, plates, mass changes, or keyhole mechanics have been added to these three chambers. A future artifact puzzle can use a constant-mass 4D object whose cross-section changes with slicing/rotation, then validate its full geometry against a socket. That design still needs authored shapes and a solvable route; it is not implemented here.
+Chamber four adds a fixed-size 4D key, a wall opening that varies along W, and a geometric pressure plate. No mass/weight mechanic is used. The plate secures the released key and latches the exit gate open. The first three chambers remain object-free.
 
 ## Validation
 
@@ -63,7 +65,7 @@ Run from the repository root:
 python3 hybrid/tests/run_tests.py
 ```
 
-This checks the original 803 chamber geometry assertions, the hybrid first-person routes and camera/movement invariants, and the upstream artifact/guided-experience suites. The hybrid test also supports rendered captures:
+This checks the original 803 chamber geometry assertions, the hybrid first-person routes and camera/movement invariants, the fourth chamber’s key/plate tests, and the upstream artifact/guided-experience suites. The hybrid test also supports rendered captures:
 
 ```sh
 godot --path . --rendering-method gl_compatibility --windowed \

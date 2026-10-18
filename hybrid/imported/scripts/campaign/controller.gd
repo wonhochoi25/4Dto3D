@@ -1,10 +1,10 @@
 extends "res://hybrid/imported/scripts/game/main.gd"
 ## A separate campaign client. The original demo scripts/scenes remain untouched.
-const LevelWorld = preload("res://hybrid/imported/scripts/campaign/level_world.gd")
+const LevelWorld = preload("res://hybrid/object_world.gd")
 const LevelView = preload("res://hybrid/view.gd")
 var level_index := 0
 var detailed_hint := false
-var completed := [false, false, false]
+var completed := [false, false, false, false]
 var level_buttons: Array[Button] = []
 var next_button: Button
 var help_button: Button
@@ -46,7 +46,7 @@ func build_ui() -> void:
 	navigation.add_theme_constant_override("separation", 8)
 	column.add_child(navigation)
 	column.move_child(navigation, 0)
-	for i in range(3):
+	for i in range(LevelWorld.LEVELS.size()):
 		var button := make_button("CHAMBER %02d" % (i + 1))
 		button.toggle_mode = true
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -69,7 +69,7 @@ func build_ui() -> void:
 	hint_label.custom_minimum_size.y = 64
 
 func load_level(index: int) -> void:
-	level_index = clampi(index, 0, 2)
+	level_index = clampi(index, 0, LevelWorld.LEVELS.size() - 1)
 	world = LevelWorld.new(level_index)
 	mode = 0
 	won = false
@@ -154,7 +154,7 @@ func toggle_shell() -> void:
 	update_hud()
 
 func advance_level() -> void:
-	if won: load_level((level_index + 1) % 3)
+	if won: load_level((level_index + 1) % LevelWorld.LEVELS.size())
 
 func update_hud() -> void:
 	# Reuse coordinate/control widgets; replace all level-specific tutorial text.
@@ -162,8 +162,8 @@ func update_hud() -> void:
 	if title_label == null: return
 	title_label.text = world.definition.title
 	subtitle_label.text = world.definition.lesson
-	chapter_label.text = "TRAINING %02d / 03\nFOUR SPATIAL DIMENSIONS" % (level_index + 1)
-	for i in range(3):
+	chapter_label.text = "TRAINING %02d / 04\nFOUR SPATIAL DIMENSIONS" % (level_index + 1)
+	for i in range(LevelWorld.LEVELS.size()):
 		level_buttons[i].set_pressed_no_signal(i == level_index)
 		level_buttons[i].text = "CHAMBER %02d%s" % [i + 1, "  ✓" if completed[i] else ""]
 	for i in range(4):
@@ -177,10 +177,10 @@ func update_hud() -> void:
 	help_button.text = "H  Hide hint" if detailed_hint else "H  Show hint"
 	shell_button.text = "V  Solid walls" if view.xray else "V  X-ray walls"
 	next_button.disabled = not won
-	next_button.text = ("Enter  ·  Next chamber" if level_index < 2 else "Enter  ·  Play again") if won else "Reach the gold exit"
+	next_button.text = ("Enter  ·  Next chamber" if level_index < LevelWorld.LEVELS.size() - 1 else "Enter  ·  Play again") if won else "Reach the gold exit"
 	if won:
-		hint_heading.text = "CHAMBER COMPLETE" if level_index < 2 else "TRAINING COMPLETE"
-		hint_label.text = "You found a route through four dimensions. Press Enter for the next chamber." if level_index < 2 else "You moved forward in W, back in X, and around the core in Z. Choose any chamber to explore another route."
+		hint_heading.text = "CHAMBER COMPLETE" if level_index < LevelWorld.LEVELS.size() - 1 else "TRAINING COMPLETE"
+		hint_label.text = "You found a route through four dimensions. Press Enter for the next chamber." if level_index < LevelWorld.LEVELS.size() - 1 else "You solved four chambers by navigating four dimensions. Choose any chamber to explore another route."
 		hint_heading.modulate = CYAN
 	status_label.text = "X-RAY VIEW: walls remain solid. V toggles their appearance." if view.xray else "All obstacles are 4D solids. Switching views preserves your position."
 	if bump_timer > 0:
