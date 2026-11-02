@@ -1,6 +1,6 @@
 extends "res://hybrid/imported/scripts/game/puzzle_world.gd"
 ## Separate authored campaign; reuses the exact existing core scene/motor API.
-const LEVELS = [preload("res://hybrid/imported/levels/training/01_a_different_direction.gd"), preload("res://hybrid/imported/levels/training/02_the_elbow.gd"), preload("res://hybrid/imported/levels/training/03_a_step_back.gd")]
+const LEVELS = [preload("res://hybrid/imported/levels/training/01_a_different_direction.gd"), preload("res://hybrid/imported/levels/training/02_the_elbow.gd"), preload("res://hybrid/imported/levels/training/03_a_step_back.gd"), preload("res://hybrid/levels/04_the_right_fit.gd")]
 var definition: Dictionary
 var marker_ids: Array[int] = []
 var stage := 0

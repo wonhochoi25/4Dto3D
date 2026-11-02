@@ -20,7 +20,9 @@ func rebuild(world: RefCounted, point: Vector4, new_mode: int) -> void:
 		visible_solids += 1
 		var renderer := SolidRenderer.new()
 		geometry.add_child(renderer)
+		renderer.set_meta("role", world.scene.objects[id].name)
 		var color := Color("527b9c") if world.scene.objects[id].name == "gate" else Color("3f657f")
+		if world.scene.objects[id].name == "exit_gate": color = Color("dc726d")
 		renderer.render({"visible": true, "color": color, "show_edges": true}, points)
 		if xray:
 			renderer.face_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
