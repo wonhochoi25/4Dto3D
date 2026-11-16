@@ -3,6 +3,7 @@ extends RigidBody3D
 ## Core math remains independent of Godot physics nodes and presentation.
 const Renderer = preload("res://scripts/rendering/solid_hull_renderer.gd")
 const Math4D = preload("res://scripts/core/math/transform_4d.gd")
+const BoundaryCells = preload("res://scripts/rendering/projected_boundary_cells.gd")
 var view_rotation := Math4D.identity()
 var camera_4d := preload("res://scripts/core/math/camera_projection_4d.gd").new()
 ## Source parts share one native body; graph composition stays in core Scene4D.
@@ -22,6 +23,8 @@ var rendered_size := -1.0
 var local_points := PackedVector3Array()
 var model
 var renderer := Renderer.new()
+var boundary_cells := BoundaryCells.new()
+var show_boundary_cells := false
 var collider := CollisionShape3D.new()
 var authored_center := Vector3.ZERO
 var initialized := false
@@ -33,6 +36,7 @@ var error := ""
 
 func _ready() -> void:
 	add_child(renderer)
+	add_child(boundary_cells)
 	add_child(collider)
 	continuous_cd = true
 	var material := PhysicsMaterial.new()
@@ -50,6 +54,7 @@ func update_geometry(time: float, reset_pose: bool = false) -> bool:
 		return false
 	var sources: Array = members if not members.is_empty() else [self]
 	var clouds: Array = []
+	var cell_clouds: Array = []
 	var projected := PackedVector3Array()
 	for source in sources:
 		var sample = source.model.track.sample(time)
@@ -62,6 +67,15 @@ func update_geometry(time: float, reset_pose: bool = false) -> bool:
 		for vertex in source.model.shape.vertices: vertices.append(Math4D.apply(matrix, vertex))
 		var cloud := camera_4d.project(vertices, projection.rows, view_rotation)
 		clouds.append(cloud)
+		if source.model.shape.display_name.begins_with("Tesseract") and source.model.shape.vertices.size() == 16:
+			# Each 3-cell is defined by fixing one of four signed coordinates.
+			for axis in range(4):
+				for side in [-1.0, 1.0]:
+					var cell := PackedVector3Array()
+					for vertex_index in range(16):
+						if is_equal_approx(source.model.shape.vertices[vertex_index][axis], side):
+							cell.append(cloud[vertex_index])
+					cell_clouds.append(cell)
 		projected.append_array(cloud)
 	var unchanged := parts.size() == clouds.size()
 	if unchanged:
@@ -69,6 +83,7 @@ func update_geometry(time: float, reset_pose: bool = false) -> bool:
 			if parts[i].source != sources[i] or parts[i].projected != clouds[i]: unchanged = false
 	if unchanged and not reset_pose:
 		for part in parts: part.renderer.update_style(part.source.model)
+		boundary_cells.set_enabled(show_boundary_cells)
 		update_mass()
 		if not is_equal_approx(rendered_size, size_multiplier): rebuild_solid()
 		return true
@@ -94,6 +109,8 @@ func update_geometry(time: float, reset_pose: bool = false) -> bool:
 		parts[i].merge({"source": sources[i], "projected": clouds[i], "points": points}, true)
 	local_points.clear()
 	for point in projected: local_points.append(point - center)
+	boundary_cells.set_cells(cell_clouds, center)
+	boundary_cells.set_enabled(show_boundary_cells)
 	rebuild_solid()
 	if not initialized or reset_pose:
 		transform = Transform3D(Basis.IDENTITY, center)

@@ -3,6 +3,7 @@ extends Control
 ## Playground's existing scene/scripts are instantiated unchanged.
 const Playground = preload("res://scenes/main.tscn")
 const Procedural = preload("res://scripts/sandbox/procedural/procedural_scene.gd")
+const ProjectionEchoLab = preload("res://scripts/sandbox/projection_echo_lab.gd")
 var pages: Array = []
 var active := -1
 var serial := 0
@@ -50,6 +51,7 @@ func _ready() -> void:
 	add_page(Playground.instantiate(), "Playground", false)
 	new_procedural()
 	add_page(preload("res://scripts/sandbox/projected_physics/demo.gd").new(), "3D Physics Demo", false)
+	add_page(ProjectionEchoLab.new(), "Projection Echo Lab", false)
 	activate(0)
 
 ## Visible tab surfaces distinguish the active workspace from inactive tabs.

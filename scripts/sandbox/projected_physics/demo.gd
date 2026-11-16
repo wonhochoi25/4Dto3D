@@ -29,6 +29,7 @@ var grab_status: Label
 var camera_position_fields: Array[SpinBox] = []
 var camera_depth_slider: HSlider
 var camera_depth_label: Label
+var show_tesseract_cells := false
 
 func _ready() -> void:
 	var environment := WorldEnvironment.new()
@@ -127,6 +128,14 @@ func build_ui() -> void:
 	build_grab_controls(box)
 	build_view_controls(box)
 	build_camera_4d_controls(box)
+	var cells_toggle := CheckBox.new()
+	cells_toggle.text = "Show projected tesseract boundary cells (visual test)"
+	cells_toggle.toggled.connect(func(enabled):
+		show_tesseract_cells = enabled
+		for entry in entries:
+			entry.body.show_boundary_cells = enabled
+			entry.body.boundary_cells.set_enabled(enabled))
+	box.add_child(cells_toggle)
 	var add_row := HBoxContainer.new()
 	box.add_child(add_row)
 	var catalog := OptionButton.new()
@@ -214,6 +223,7 @@ func add_shape(index: int, start: Vector4) -> void:
 	body.graph = graph
 	body.node_id = id
 	body.view_rotation = view_matrix
+	body.show_boundary_cells = show_tesseract_cells
 	body.camera_4d = camera_4d
 	add_child(body)
 	body.update_geometry(time, true)
