@@ -4,7 +4,7 @@ This is the combined first-/third-person version of all four training chambers. 
 
 ## Run
 
-Open this repository's `project.godot` in Godot, open **hybrid/training.tscn**, and press **F6** (Run Current Scene). F5 still opens the upstream lab. On macOS, `hybrid/launch.command` launches the new scene directly using the Compatibility renderer. It also accepts a `GODOT_BIN` environment override.
+Open this repository's `project.godot` in Godot, open **hybrid/training.tscn**, and press **F6** (Run Current Scene). F5 now starts the SEAM campaign; open `scenes/app.tscn` and use F6 for the upstream lab. On macOS, `hybrid/launch.command` launches the new scene directly using the Compatibility renderer. It also accepts a `GODOT_BIN` environment override.
 
 ## Controls
 
