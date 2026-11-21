@@ -1,3 +1,9 @@
+# SEAM — playable puzzle campaign
+
+Press **F5** to play the three-room first-person campaign with real coordinate-system changes and changing gravity. On macOS, double-click [game/launch.command](game/launch.command). See [controls and implementation](game/README.md) and [design notes](game/DESIGN.md). The technical lab remains available at `scenes/app.tscn` (F6); the earlier hybrid demo remains at `hybrid/training.tscn`.
+
+---
+
 # 4D → 3D Projection Lab
 
 ## Documentation and workspaces
@@ -7,7 +13,7 @@
 - [4D physics](docs/PHYSICS.md): independent headless physics engine and its limitations.
 - [Collision backend contract](docs/COLLISION_BACKEND.md): replaceable 4D collision-query interface.
 
-Startup opens **Playground**, **Procedural 1**, and **3D Physics Demo**, with Playground selected. The **+** button adds procedural tabs. The demo uses native Godot **3D** physics on projected solids; it does not run the independent **4D** physics engine. The Playground/Procedural usage reference follows below.
+The lab opens **Playground**, **Procedural 1**, and **3D Physics Demo**, with Playground selected. The **+** button adds procedural tabs. The demo uses native Godot **3D** physics on projected solids; it does not run the independent **4D** physics engine. The Playground/Procedural usage reference follows below.
 
 ## Runtime architecture
 
@@ -27,7 +33,7 @@ Godot 4.7 viewer for editing 4D vertex coordinates and displaying a linear 3D pr
 
 ## Run and controls
 
-Open `project.godot` and press F5.
+Open `scenes/app.tscn` and press F6 to run the technical lab.
 
 - Select a shape from the left dropdown. Each shape retains its edits during the session; switching clears undo history.
 - Edit the 3×4 matrix, then Apply. Reset matrix restores XYZ. Shape switching leaves the matrix unchanged.
@@ -207,7 +213,7 @@ Scale controls also have four live sliders and shared **Min / Max / Apply range*
 
 ## Procedural workspace and browser-style tabs
 
-F5 now launches `scenes/app.tscn`. The original `scenes/main.tscn` and Playground scripts are unchanged and instantiated inside the first, unclosable tab. **+** opens a new empty procedural experiment. **×** frees that experiment; switching away pauses its timeline. Each tab owns a separate SubViewport/World3D, camera, input processing, and data. Tabs exist only in memory; closing a procedural tab discards it.
+The technical lab scene is `scenes/app.tscn` (F6). The original `scenes/main.tscn` and Playground scripts are unchanged and instantiated inside the first, unclosable tab. **+** opens a new empty procedural experiment. **×** frees that experiment; switching away pauses its timeline. Each tab owns a separate SubViewport/World3D, camera, input processing, and data. Tabs exist only in memory; closing a procedural tab discards it.
 
 In Procedural, choose a shape and **Add shape**. Add multiple instances independently. Select its tree row to open its inline editor, which has visibility, color, opacity, optional edge overlay, Remove, and five expression sections:
 
